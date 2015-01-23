@@ -29,9 +29,9 @@ func (gzw GzipResponseWriter) Write(b []byte) (int, error) {
 	return gzw.Writer.Write(b)
 }
 
-// MakeGzippingHandler wraps an HTTP handler, to transparently gzip the response
-// body if the client supports it (via the Accept-Encoding header).
-func MakeGzippingHandler(h http.Handler) http.Handler {
+// GzipHandler wraps an HTTP handler, to transparently gzip the response body if
+// the client supports it (via the Accept-Encoding header).
+func GzipHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if acceptsGzip(r) {
 

@@ -9,7 +9,7 @@ when that's undesirable.
 
 ## Usage
 
-Call `MakeGzippingHandler` with any handler (an object which implements the
+Call `GzipHandler` with any handler (an object which implements the
 `http.Handler` interface), and it'll return a new handler which gzips the
 response. For example:
 
@@ -28,7 +28,7 @@ func main() {
 		io.WriteString(w, "Hello, World")
 	})
 
-	withGz := gziphandler.MakeGzippingHandler(withoutGz)
+	withGz := gziphandler.GzipHandler(withoutGz)
 
 	http.Handle("/", withGz)
 	http.ListenAndServe("0.0.0.0:8000", nil)

@@ -32,11 +32,11 @@ func TestParseEncodings(t *testing.T) {
 	}
 }
 
-func TestGzippingHandler(t *testing.T) {
+func TestGzipHandler(t *testing.T) {
 	testBody := "aaabbbccc"
 
-	// This just exists to provide something for MakeGzipHandler to wrap.
-	handler := MakeGzippingHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// This just exists to provide something for GzipHandler to wrap.
+	handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		io.WriteString(w, testBody)
 	}))
