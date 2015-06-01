@@ -2,6 +2,7 @@ package gziphandler
 
 import (
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,7 +10,48 @@ import (
 	"strings"
 )
 
+// ErrEmptyContentCoding indicates that the Accept-Encoding header was
+// empty.
+var ErrEmptyContentCoding = errors.New("Empty Accept-Encoding")
+
 type codings map[string]float64
+
+// KeyError is a Key/Value struct that matches the error with the
+// string that caused the error.
+type KeyError struct {
+	Key string // The "key", which is the ill-formatted string
+	Err error  // the "value", which is the error from strconv
+}
+
+func (k *KeyError) Error() string {
+	return fmt.Sprintf("'%s' caused error: '%v'", k.Key, k.Err.Error())
+}
+
+// ErrorList is a slice of KeyErrors that allows individual errors
+// to be extracted.
+type ErrorList []KeyError // Slice of returned errors
+
+func (e *ErrorList) Error() string {
+	return fmt.Sprintf("%d errors", len(*e))
+}
+
+// Append appends an error to the error list.
+func (e *ErrorList) Append(err interface{}) {
+	// Should this be a method on a pointer to a slice, or just
+	// a slice?
+	switch err := err.(type) {
+	case KeyError:
+		*e = append(*e, err)
+	case *KeyError:
+		*e = append(*e, *err)
+	case *ErrorList:
+		*e = append(*e, *err...)
+	case ErrorList:
+		*e = append(*e, err...)
+	default:
+		return
+	}
+}
 
 // The default qvalue to assign to an encoding if no explicit qvalue is set.
 // This is actually kind of ambiguous in RFC 2616, so hopefully it's correct.
@@ -63,31 +105,29 @@ func acceptsGzip(r *http.Request) bool {
 // works.
 //
 // See: http://tools.ietf.org/html/rfc2616#section-14.3
-func parseEncodings(s string) (codings, error) {
+func parseEncodings(s string) (codings, ErrorList) {
 	c := make(codings)
-	e := make([]string, 0)
+	e := make(ErrorList, 0)
 
 	for _, ss := range strings.Split(s, ",") {
 		coding, qvalue, err := parseCoding(ss)
 
 		if err != nil {
-			e = append(e, err.Error())
+			e.Append(KeyError{ss, err})
 
 		} else {
 			c[coding] = qvalue
 		}
 	}
 
-	// TODO (adammck): Use a proper multi-error struct, so the individual errors
-	//                 can be extracted if anyone cares.
 	if len(e) > 0 {
-		return c, fmt.Errorf("errors while parsing encodings: %s", strings.Join(e, ", "))
+		return c, e
 	}
 
 	return c, nil
 }
 
-// parseCoding parses a single conding (content-coding with an optional qvalue),
+// parseCoding parses a single coding (content-coding with an optional qvalue),
 // as might appear in an Accept-Encoding header. It attempts to forgive minor
 // formatting errors.
 func parseCoding(s string) (coding string, qvalue float64, err error) {
@@ -111,7 +151,7 @@ func parseCoding(s string) (coding string, qvalue float64, err error) {
 	}
 
 	if coding == "" {
-		err = fmt.Errorf("empty content-coding")
+		err = ErrEmptyContentCoding
 	}
 
 	return

@@ -3,11 +3,13 @@ package gziphandler
 import (
 	"bytes"
 	"compress/gzip"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseEncodings(t *testing.T) {
@@ -69,4 +71,80 @@ func gzipStr(s string) []byte {
 	io.WriteString(w, s)
 	w.Close()
 	return b.Bytes()
+}
+
+func TestMultiError(t *testing.T) {
+	tests := []string{
+		"",
+		"compress;q=0.....1, gzip;q=1.r",
+		"gzip;q=1.0, identity; q=///, *;q=[",
+
+		"AAA;q=r",
+		"BBB ; q = f",
+	}
+
+	want := ErrorList{
+		KeyError{"", ErrEmptyContentCoding},
+		KeyError{"compress;q=0.....1", &strconv.NumError{
+			Func: "ParseFloat",
+			Num:  "0.....1",
+			Err:  strconv.ErrSyntax,
+		}},
+		KeyError{" gzip;q=1.r", &strconv.NumError{
+			Func: "ParseFloat",
+			Num:  "1.r",
+			Err:  strconv.ErrSyntax,
+		}},
+		KeyError{" identity; q=///", &strconv.NumError{
+			Func: "ParseFloat",
+			Num:  "///",
+			Err:  strconv.ErrSyntax,
+		}},
+		KeyError{" *;q=[", &strconv.NumError{
+			Func: "ParseFloat",
+			Num:  "[",
+			Err:  strconv.ErrSyntax,
+		}},
+		KeyError{"AAA;q=r", &strconv.NumError{
+			Func: "ParseFloat",
+			Num:  "r",
+			Err:  strconv.ErrSyntax,
+		}},
+	}
+
+	masterList := new(ErrorList)
+	for _, eg := range tests {
+		_, errList := parseEncodings(eg)
+
+		masterList.Append(errList)
+	}
+
+	if !equalErrorSlice(*masterList, want) {
+		t.Errorf("Slices do not match %+v\n\n%+v", *masterList, want)
+	}
+
+	assert.Equal(t, "6 errors", masterList.Error())
+}
+
+func equalErrorSlice(s1, s2 ErrorList) bool {
+	if len(s1) != len(s2) {
+		return false
+	}
+
+	for i := 0; i < len(s1); i++ {
+		e1 := s1[i]
+		e2 := s2[i]
+
+		if e1.Key != e2.Key ||
+			// If the string outputs match, the errors are the same.
+			// There's no need for deep-equality checking, particularly
+			// because the error could be something like this:
+			// gziphandler.KeyError{Key:"compress;q=0.....1", Err:(*strconv.NumError)(0xc208038d80)}
+			// and it's pointless to chase the (potential) pointer.
+			e1.Err.Error() != e2.Err.Error() {
+			return false
+		}
+	}
+
+	return true
 }
