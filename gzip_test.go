@@ -112,15 +112,20 @@ func TestMultiError(t *testing.T) {
 		}},
 	}
 
-	masterList := new(ErrorList)
+	masterList := make(ErrorList, 0)
 	for _, eg := range tests {
-		_, errList := parseEncodings(eg)
+		_, err := parseEncodings(eg)
 
-		masterList.Append(errList)
+		if errList, ok := err.(*ErrorList); ok {
+			for _, e := range *errList {
+				masterList = append(masterList, e)
+			}
+
+		}
 	}
 
-	if !equalErrorSlice(*masterList, want) {
-		t.Errorf("Slices do not match %+v\n\n%+v", *masterList, want)
+	if !equalErrorSlice(masterList, want) {
+		t.Errorf("Slices do not match %+v\n\n%+v", masterList, want)
 	}
 
 	assert.Equal(t, "6 errors", masterList.Error())

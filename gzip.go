@@ -35,24 +35,6 @@ func (e *ErrorList) Error() string {
 	return fmt.Sprintf("%d errors", len(*e))
 }
 
-// Append appends an error to the error list.
-func (e *ErrorList) Append(err interface{}) {
-	// Should this be a method on a pointer to a slice, or just
-	// a slice?
-	switch err := err.(type) {
-	case KeyError:
-		*e = append(*e, err)
-	case *KeyError:
-		*e = append(*e, *err)
-	case *ErrorList:
-		*e = append(*e, *err...)
-	case ErrorList:
-		*e = append(*e, err...)
-	default:
-		return
-	}
-}
-
 // The default qvalue to assign to an encoding if no explicit qvalue is set.
 // This is actually kind of ambiguous in RFC 2616, so hopefully it's correct.
 // The examples seem to indicate that it is.
@@ -105,7 +87,7 @@ func acceptsGzip(r *http.Request) bool {
 // works.
 //
 // See: http://tools.ietf.org/html/rfc2616#section-14.3
-func parseEncodings(s string) (codings, ErrorList) {
+func parseEncodings(s string) (codings, error) {
 	c := make(codings)
 	e := make(ErrorList, 0)
 
@@ -113,7 +95,7 @@ func parseEncodings(s string) (codings, ErrorList) {
 		coding, qvalue, err := parseCoding(ss)
 
 		if err != nil {
-			e.Append(KeyError{ss, err})
+			e = append(e, KeyError{ss, err})
 
 		} else {
 			c[coding] = qvalue
@@ -121,7 +103,7 @@ func parseEncodings(s string) (codings, ErrorList) {
 	}
 
 	if len(e) > 0 {
-		return c, e
+		return c, &e
 	}
 
 	return c, nil
