@@ -9,6 +9,12 @@ import (
 	"strings"
 )
 
+const (
+	vary            = "Vary"
+	acceptEncoding  = "Accept-Encoding"
+	contentEncoding = "Content-Encoding"
+)
+
 type codings map[string]float64
 
 // The default qvalue to assign to an encoding if no explicit qvalue is set.
@@ -33,6 +39,8 @@ func (gzw GzipResponseWriter) Write(b []byte) (int, error) {
 // the client supports it (via the Accept-Encoding header).
 func GzipHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add(vary, acceptEncoding)
+
 		if acceptsGzip(r) {
 
 			// Bytes written during ServeHTTP are redirected to this gzip writer
@@ -40,7 +48,7 @@ func GzipHandler(h http.Handler) http.Handler {
 			gzw := gzip.NewWriter(w)
 			defer gzw.Close()
 
-			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Set(contentEncoding, "gzip")
 			h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
 
 		} else {
@@ -52,7 +60,7 @@ func GzipHandler(h http.Handler) http.Handler {
 // acceptsGzip returns true if the given HTTP request indicates that it will
 // accept a gzippped response.
 func acceptsGzip(r *http.Request) bool {
-	acceptedEncodings, _ := parseEncodings(r.Header.Get("Accept-Encoding"))
+	acceptedEncodings, _ := parseEncodings(r.Header.Get(acceptEncoding))
 	return acceptedEncodings["gzip"] > 0.0
 }
 
