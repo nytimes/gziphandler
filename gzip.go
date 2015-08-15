@@ -14,18 +14,18 @@ type codings map[string]float64
 // The default qvalue to assign to an encoding if no explicit qvalue is set.
 // This is actually kind of ambiguous in RFC 2616, so hopefully it's correct.
 // The examples seem to indicate that it is.
-const DEFAULT_QVALUE = 1.0
+const defaultQValue = 1.0
 
-// GzipResponseWriter provides an http.ResponseWriter interface, which gzips
+// gzipResponseWriter provides an http.ResponseWriter interface, which gzips
 // bytes before writing them to the underlying response. This doesn't set the
 // Content-Encoding header, nor close the writers, so don't forget to do that.
-type GzipResponseWriter struct {
+type gzipResponseWriter struct {
 	io.Writer
 	http.ResponseWriter
 }
 
 // Write appends data to the gzip writer.
-func (gzw GzipResponseWriter) Write(b []byte) (int, error) {
+func (gzw gzipResponseWriter) Write(b []byte) (int, error) {
 	return gzw.Writer.Write(b)
 }
 
@@ -41,7 +41,7 @@ func GzipHandler(h http.Handler) http.Handler {
 			defer gzw.Close()
 
 			w.Header().Set("Content-Encoding", "gzip")
-			h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
+			h.ServeHTTP(gzipResponseWriter{gzw, w}, r)
 
 		} else {
 			h.ServeHTTP(w, r)
@@ -93,7 +93,7 @@ func parseEncodings(s string) (codings, error) {
 func parseCoding(s string) (coding string, qvalue float64, err error) {
 	for n, part := range strings.Split(s, ";") {
 		part = strings.TrimSpace(part)
-		qvalue = DEFAULT_QVALUE
+		qvalue = defaultQValue
 
 		if n == 0 {
 			coding = strings.ToLower(part)
