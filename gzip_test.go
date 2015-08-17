@@ -3,11 +3,12 @@ package gziphandler
 import (
 	"bytes"
 	"compress/gzip"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseEncodings(t *testing.T) {
@@ -49,6 +50,7 @@ func TestGzipHandler(t *testing.T) {
 
 	assert.Equal(t, 200, res1.Code)
 	assert.Equal(t, "", res1.Header().Get("Content-Encoding"))
+	assert.Equal(t, "Accept-Encoding", res1.Header().Get("Vary"))
 	assert.Equal(t, testBody, res1.Body.String())
 
 	// but requests with accept-encoding:gzip are compressed if possible
@@ -60,6 +62,7 @@ func TestGzipHandler(t *testing.T) {
 
 	assert.Equal(t, 200, res2.Code)
 	assert.Equal(t, "gzip", res2.Header().Get("Content-Encoding"))
+	assert.Equal(t, "Accept-Encoding", res2.Header().Get("Vary"))
 	assert.Equal(t, gzipStr(testBody), res2.Body.Bytes())
 }
 
