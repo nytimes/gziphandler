@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -37,10 +38,7 @@ func TestGzipHandler(t *testing.T) {
 	testBody := "aaabbbccc"
 
 	// This just exists to provide something for GzipHandler to wrap.
-	handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
-		io.WriteString(w, testBody)
-	}))
+	handler := newTestHandler(testBody)
 
 	// requests without accept-encoding are passed along as-is
 
@@ -66,10 +64,63 @@ func TestGzipHandler(t *testing.T) {
 	assert.Equal(t, gzipStr(testBody), res2.Body.Bytes())
 }
 
+// --------------------------------------------------------------------
+
+func BenchmarkGzipHandler_S2k(b *testing.B)   { benchmark(b, false, 2048) }
+func BenchmarkGzipHandler_S20k(b *testing.B)  { benchmark(b, false, 20480) }
+func BenchmarkGzipHandler_S100k(b *testing.B) { benchmark(b, false, 102400) }
+func BenchmarkGzipHandler_P2k(b *testing.B)   { benchmark(b, true, 2048) }
+func BenchmarkGzipHandler_P20k(b *testing.B)  { benchmark(b, true, 20480) }
+func BenchmarkGzipHandler_P100k(b *testing.B) { benchmark(b, true, 102400) }
+
+// --------------------------------------------------------------------
+
 func gzipStr(s string) []byte {
 	var b bytes.Buffer
 	w := gzip.NewWriter(&b)
 	io.WriteString(w, s)
 	w.Close()
 	return b.Bytes()
+}
+
+func benchmark(b *testing.B, parallel bool, size int) {
+	bin, err := ioutil.ReadFile("testdata/benchmark.json")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	req, _ := http.NewRequest("GET", "/whatever", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	handler := newTestHandler(string(bin[:size]))
+
+	if parallel {
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				runBenchmark(b, req, handler)
+			}
+		})
+	} else {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			runBenchmark(b, req, handler)
+		}
+	}
+}
+
+func runBenchmark(b *testing.B, req *http.Request, handler http.Handler) {
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if code := res.Code; code != 200 {
+		b.Fatalf("Expected 200 but got %d", code)
+	} else if blen := res.Body.Len(); blen < 500 {
+		b.Fatalf("Expected complete response body, but got %d bytes", blen)
+	}
+}
+
+func newTestHandler(body string) http.Handler {
+	return GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		io.WriteString(w, body)
+	}))
 }

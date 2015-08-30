@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
@@ -21,6 +22,10 @@ type codings map[string]float64
 // This is actually kind of ambiguous in RFC 2616, so hopefully it's correct.
 // The examples seem to indicate that it is.
 const DEFAULT_QVALUE = 1.0
+
+var gzipWriterPool = sync.Pool{
+	New: func() interface{} { return gzip.NewWriter(nil) },
+}
 
 // GzipResponseWriter provides an http.ResponseWriter interface, which gzips
 // bytes before writing them to the underlying response. This doesn't set the
@@ -45,12 +50,13 @@ func GzipHandler(h http.Handler) http.Handler {
 
 			// Bytes written during ServeHTTP are redirected to this gzip writer
 			// before being written to the underlying response.
-			gzw := gzip.NewWriter(w)
+			gzw := gzipWriterPool.Get().(*gzip.Writer)
+			gzw.Reset(w)
 			defer gzw.Close()
 
 			w.Header().Set(contentEncoding, "gzip")
 			h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
-
+			gzipWriterPool.Put(gzw)
 		} else {
 			h.ServeHTTP(w, r)
 		}
