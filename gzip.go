@@ -52,10 +52,11 @@ func GzipHandler(h http.Handler) http.Handler {
 			// before being written to the underlying response.
 			gzw := gzipWriterPool.Get().(*gzip.Writer)
 			gzw.Reset(w)
-			defer gzw.Close()
 
 			w.Header().Set(contentEncoding, "gzip")
 			h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
+
+			gzw.Close()
 			gzipWriterPool.Put(gzw)
 		} else {
 			h.ServeHTTP(w, r)
