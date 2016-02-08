@@ -56,17 +56,15 @@ func GzipHandler(h http.Handler) http.Handler {
 		w.Header().Add(vary, acceptEncoding)
 
 		if acceptsGzip(r) {
-
 			// Bytes written during ServeHTTP are redirected to this gzip writer
 			// before being written to the underlying response.
 			gzw := gzipWriterPool.Get().(*gzip.Writer)
+			defer gzipWriterPool.Put(gzw)
 			gzw.Reset(w)
+			defer gzw.Close()
 
 			w.Header().Set(contentEncoding, "gzip")
 			h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
-
-			gzw.Close()
-			gzipWriterPool.Put(gzw)
 		} else {
 			h.ServeHTTP(w, r)
 		}
