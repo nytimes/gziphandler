@@ -3,7 +3,6 @@ package gziphandler
 import (
 	"compress/gzip"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -31,13 +30,23 @@ var gzipWriterPool = sync.Pool{
 // bytes before writing them to the underlying response. This doesn't set the
 // Content-Encoding header, nor close the writers, so don't forget to do that.
 type GzipResponseWriter struct {
-	io.Writer
+	gw *gzip.Writer
 	http.ResponseWriter
 }
 
 // Write appends data to the gzip writer.
-func (gzw GzipResponseWriter) Write(b []byte) (int, error) {
-	return gzw.Writer.Write(b)
+func (w GzipResponseWriter) Write(b []byte) (int, error) {
+	return w.gw.Write(b)
+}
+
+// Flush flushes the underlying *gzip.Writer and then the underlying
+// http.ResponseWriter if it is an http.Flusher. This makes GzipResponseWriter
+// an http.Flusher.
+func (w GzipResponseWriter) Flush() {
+	w.gw.Flush()
+	if fw, ok := w.ResponseWriter.(http.Flusher); ok {
+		fw.Flush()
+	}
 }
 
 // GzipHandler wraps an HTTP handler, to transparently gzip the response body if
