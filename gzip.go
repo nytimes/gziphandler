@@ -49,6 +49,12 @@ func (w GzipResponseWriter) Flush() {
 	}
 }
 
+// CloseNotify provides the underlying http.ResponseWriter's CloseNotify channel.
+// Panics if the underlying http.ResponseWriter doesn't implement CloseNotify().
+func (w GzipResponseWriter) CloseNotify() <-chan bool {
+	return w.ResponseWriter.(http.CloseNotifier).CloseNotify()
+}
+
 // GzipHandler wraps an HTTP handler, to transparently gzip the response body if
 // the client supports it (via the Accept-Encoding header).
 func GzipHandler(h http.Handler) http.Handler {
