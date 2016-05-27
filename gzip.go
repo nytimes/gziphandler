@@ -3,6 +3,7 @@ package gziphandler
 import (
 	"compress/gzip"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,6 +14,9 @@ const (
 	vary            = "Vary"
 	acceptEncoding  = "Accept-Encoding"
 	contentEncoding = "Content-Encoding"
+	secWebSocketKey = "Sec-WebSocket-Key"
+	contentLength   = "Content-Length"
+	encodingGzip    = "gzip"
 )
 
 type codings map[string]float64
@@ -51,13 +55,26 @@ func (w GzipResponseWriter) Flush() {
 	if fw, ok := w.ResponseWriter.(http.Flusher); ok {
 		fw.Flush()
 	}
+	// Delete the content length after we know we have been written to.
+	w.Header().Del(contentLength)
 }
 
 // GzipHandler wraps an HTTP handler, to transparently gzip the response body if
 // the client supports it (via the Accept-Encoding header).
 func GzipHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Add(vary, acceptEncoding)
+
+		// Skip compression if client attempt WebSocket connection
+		if len(r.Header.Get(secWebSocketKey)) > 0 {
+			h.ServeHTTP(w, r)
+			return
+		}
+
+		// Skip compression if already compressed
+		if w.Header().Get(contentEncoding) == encodingGzip {
+			h.ServeHTTP(w, r)
+			return
+		}
 
 		if acceptsGzip(r) {
 			// Bytes written during ServeHTTP are redirected to this gzip writer
@@ -65,10 +82,17 @@ func GzipHandler(h http.Handler) http.Handler {
 			gzw := gzipWriterPool.Get().(*gzip.Writer)
 			defer gzipWriterPool.Put(gzw)
 			gzw.Reset(w)
-			defer gzw.Close()
+			defer func() {
+				err := gzw.Close()
+				if err != nil {
+					log.Fatalln("gzw.Close:", err)
+				}
+			}()
 
-			w.Header().Set(contentEncoding, "gzip")
+			w.Header().Add(vary, acceptEncoding)
+			w.Header().Set(contentEncoding, encodingGzip)
 			h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
+
 		} else {
 			h.ServeHTTP(w, r)
 		}
@@ -79,7 +103,7 @@ func GzipHandler(h http.Handler) http.Handler {
 // accept a gzippped response.
 func acceptsGzip(r *http.Request) bool {
 	acceptedEncodings, _ := parseEncodings(r.Header.Get(acceptEncoding))
-	return acceptedEncodings["gzip"] > 0.0
+	return acceptedEncodings[encodingGzip] > 0.0
 }
 
 // parseEncodings attempts to parse a list of codings, per RFC 2616, as might

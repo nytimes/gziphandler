@@ -48,7 +48,6 @@ func TestGzipHandler(t *testing.T) {
 
 	assert.Equal(t, 200, res1.Code)
 	assert.Equal(t, "", res1.Header().Get("Content-Encoding"))
-	assert.Equal(t, "Accept-Encoding", res1.Header().Get("Vary"))
 	assert.Equal(t, testBody, res1.Body.String())
 
 	// but requests with accept-encoding:gzip are compressed if possible
