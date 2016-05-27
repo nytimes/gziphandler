@@ -14,6 +14,7 @@ const (
 	acceptEncoding  = "Accept-Encoding"
 	contentEncoding = "Content-Encoding"
 	secWebSocketKey = "Sec-WebSocket-Key"
+	encodingGzip    = "gzip"
 )
 
 type codings map[string]float64
@@ -65,6 +66,12 @@ func GzipHandler(h http.Handler) http.Handler {
 			return
 		}
 
+		// Skip compression if already compressed
+		if w.Header().Get(contentEncoding) == encodingGzip {
+			h.ServeHTTP(w, r)
+			return
+		}
+
 		if acceptsGzip(r) {
 			// Bytes written during ServeHTTP are redirected to this gzip writer
 			// before being written to the underlying response.
@@ -74,7 +81,7 @@ func GzipHandler(h http.Handler) http.Handler {
 			defer gzw.Close()
 
 			w.Header().Add(vary, acceptEncoding)
-			w.Header().Set(contentEncoding, "gzip")
+			w.Header().Set(contentEncoding, encodingGzip)
 			h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
 		} else {
 			h.ServeHTTP(w, r)
@@ -86,7 +93,7 @@ func GzipHandler(h http.Handler) http.Handler {
 // accept a gzippped response.
 func acceptsGzip(r *http.Request) bool {
 	acceptedEncodings, _ := parseEncodings(r.Header.Get(acceptEncoding))
-	return acceptedEncodings["gzip"] > 0.0
+	return acceptedEncodings[encodingGzip] > 0.0
 }
 
 // parseEncodings attempts to parse a list of codings, per RFC 2616, as might
