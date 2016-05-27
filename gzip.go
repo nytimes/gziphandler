@@ -3,6 +3,7 @@ package gziphandler
 import (
 	"compress/gzip"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ const (
 	acceptEncoding  = "Accept-Encoding"
 	contentEncoding = "Content-Encoding"
 	secWebSocketKey = "Sec-WebSocket-Key"
+	contentLength   = "Content-Length"
 	encodingGzip    = "gzip"
 )
 
@@ -53,6 +55,8 @@ func (w GzipResponseWriter) Flush() {
 	if fw, ok := w.ResponseWriter.(http.Flusher); ok {
 		fw.Flush()
 	}
+	// Delete the content length after we know we have been written to.
+	w.Header().Del(contentLength)
 }
 
 // GzipHandler wraps an HTTP handler, to transparently gzip the response body if
@@ -78,11 +82,17 @@ func GzipHandler(h http.Handler) http.Handler {
 			gzw := gzipWriterPool.Get().(*gzip.Writer)
 			defer gzipWriterPool.Put(gzw)
 			gzw.Reset(w)
-			defer gzw.Close()
+			defer func() {
+				err := gzw.Close()
+				if err != nil {
+					log.Fatalln("gzw.Close:", err)
+				}
+			}()
 
 			w.Header().Add(vary, acceptEncoding)
 			w.Header().Set(contentEncoding, encodingGzip)
 			h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
+
 		} else {
 			h.ServeHTTP(w, r)
 		}
