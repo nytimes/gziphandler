@@ -13,6 +13,7 @@ const (
 	vary            = "Vary"
 	acceptEncoding  = "Accept-Encoding"
 	contentEncoding = "Content-Encoding"
+	secWebSocketKey = "Sec-WebSocket-Key"
 )
 
 type codings map[string]float64
@@ -57,6 +58,13 @@ func (w GzipResponseWriter) Flush() {
 // the client supports it (via the Accept-Encoding header).
 func GzipHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		// Skip compression if client attempt WebSocket connection
+		if len(r.Header.Get(secWebSocketKey)) > 0 {
+			h.ServeHTTP(w, r)
+			return
+		}
+
 		if acceptsGzip(r) {
 			// Bytes written during ServeHTTP are redirected to this gzip writer
 			// before being written to the underlying response.
