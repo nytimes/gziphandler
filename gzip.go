@@ -57,8 +57,6 @@ func (w GzipResponseWriter) Flush() {
 // the client supports it (via the Accept-Encoding header).
 func GzipHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Add(vary, acceptEncoding)
-
 		if acceptsGzip(r) {
 			// Bytes written during ServeHTTP are redirected to this gzip writer
 			// before being written to the underlying response.
@@ -67,6 +65,7 @@ func GzipHandler(h http.Handler) http.Handler {
 			gzw.Reset(w)
 			defer gzw.Close()
 
+			w.Header().Add(vary, acceptEncoding)
 			w.Header().Set(contentEncoding, "gzip")
 			h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
 		} else {
