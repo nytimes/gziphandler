@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -14,6 +15,8 @@ const (
 	acceptEncoding  = "Accept-Encoding"
 	contentEncoding = "Content-Encoding"
 )
+
+var compressionLevel int32 = gzip.DefaultCompression
 
 type codings map[string]float64
 
@@ -23,7 +26,26 @@ type codings map[string]float64
 const DEFAULT_QVALUE = 1.0
 
 var gzipWriterPool = sync.Pool{
-	New: func() interface{} { return gzip.NewWriter(nil) },
+	New: func() interface{} {
+		// NewWriterLevel only returns error on a bad level, this is checked by
+		// SetCompressionLevel so its okay to ignore the error
+		w, _ := gzip.NewWriterLevel(nil, int(atomic.LoadInt32(&compressionLevel)))
+		return w
+	},
+}
+
+// SetCompressionLevel changes the compression level used to for gzipping responses.
+// (see compress/gzip godoc for more details on valid values) Due to reuse of within
+// the library this may not take affect immediately if this is set while the package
+// has already been in use. The function is safe to use concurrently with the rest of
+// the package, but is recommended to be used first to ensure the change in compression
+// level. An error will only be returned if level is invalid.
+func SetCompressionLevel(level int) error {
+	if level < gzip.BestSpeed || level > gzip.BestCompression {
+		return fmt.Errorf("%d is not a valid compression level", level)
+	}
+	atomic.StoreInt32(&compressionLevel, int32(level))
+	return nil
 }
 
 // GzipResponseWriter provides an http.ResponseWriter interface, which gzips
