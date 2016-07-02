@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 )
 
 const (
@@ -16,8 +15,6 @@ const (
 	contentEncoding = "Content-Encoding"
 )
 
-var compressionLevel int32 = gzip.DefaultCompression
-
 type codings map[string]float64
 
 // The default qvalue to assign to an encoding if no explicit qvalue is set.
@@ -25,27 +22,29 @@ type codings map[string]float64
 // The examples seem to indicate that it is.
 const DEFAULT_QVALUE = 1.0
 
-var gzipWriterPool = sync.Pool{
-	New: func() interface{} {
-		// NewWriterLevel only returns error on a bad level, this is checked by
-		// SetCompressionLevel so its okay to ignore the error
-		w, _ := gzip.NewWriterLevel(nil, int(atomic.LoadInt32(&compressionLevel)))
-		return w
-	},
+// gzipWriterPools maps compression level to a sync.Pool used to re-use instance
+// of gzip.Writer.
+var gzipWriterPools map[int]*sync.Pool
+
+func init() {
+	gzipWriterPools = make(map[int]*sync.Pool)
+	for i := gzip.BestSpeed; i <= gzip.BestCompression; i++ {
+		addLevelPool(i)
+	}
+	// gzip.DefaultCompression == -1, so we need to treat it special.
+	addLevelPool(gzip.DefaultCompression)
 }
 
-// SetCompressionLevel changes the compression level used to for gzipping responses.
-// (see compress/gzip godoc for more details on valid values) Due to reuse of within
-// the library this may not take affect immediately if this is set while the package
-// has already been in use. The function is safe to use concurrently with the rest of
-// the package, but is recommended to be used first to ensure the change in compression
-// level. An error will only be returned if level is invalid.
-func SetCompressionLevel(level int) error {
-	if level < gzip.BestSpeed || level > gzip.BestCompression {
-		return fmt.Errorf("%d is not a valid compression level", level)
+func addLevelPool(level int) {
+	gzipWriterPools[level] = &sync.Pool{
+		New: func() interface{} {
+			// NewWriterLevel only returns error on a bad level, we are guaranteeing
+			// that this will be a valid level so it is okay to ignore the returned
+			// error.
+			w, _ := gzip.NewWriterLevel(nil, level)
+			return w
+		},
 	}
-	atomic.StoreInt32(&compressionLevel, int32(level))
-	return nil
 }
 
 // GzipResponseWriter provides an http.ResponseWriter interface, which gzips
@@ -75,26 +74,43 @@ func (w GzipResponseWriter) Flush() {
 	}
 }
 
+// NewGzipLevelHandler returns a wrapper function (often known as middleware)
+// which can be used to wrap an HTTP handler to transparently gzip the response
+// body if the client supports it (via the Accept-Encoding header). Responses will
+// be encoded at the given gzip compression level. An error will be returned only
+// if an invalid gzip compression level is given, so if one can ensure the level
+// is valid, the returned error can be safely ignored.
+func NewGzipLevelHandler(level int) (func(http.Handler) http.Handler, error) {
+	if _, ok := gzipWriterPools[level]; !ok {
+		return nil, fmt.Errorf("invalid compression level requested: %d", level)
+	}
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Add(vary, acceptEncoding)
+
+			if acceptsGzip(r) {
+				// Bytes written during ServeHTTP are redirected to this gzip writer
+				// before being written to the underlying response.
+				gzw := gzipWriterPools[level].Get().(*gzip.Writer)
+				defer gzipWriterPools[level].Put(gzw)
+				gzw.Reset(w)
+				defer gzw.Close()
+
+				w.Header().Set(contentEncoding, "gzip")
+				h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
+			} else {
+				h.ServeHTTP(w, r)
+			}
+		})
+	}, nil
+}
+
 // GzipHandler wraps an HTTP handler, to transparently gzip the response body if
-// the client supports it (via the Accept-Encoding header).
+// the client supports it (via the Accept-Encoding header). This will compress at
+// the default compression level.
 func GzipHandler(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Add(vary, acceptEncoding)
-
-		if acceptsGzip(r) {
-			// Bytes written during ServeHTTP are redirected to this gzip writer
-			// before being written to the underlying response.
-			gzw := gzipWriterPool.Get().(*gzip.Writer)
-			defer gzipWriterPool.Put(gzw)
-			gzw.Reset(w)
-			defer gzw.Close()
-
-			w.Header().Set(contentEncoding, "gzip")
-			h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
-		} else {
-			h.ServeHTTP(w, r)
-		}
-	})
+	wrapper, _ := NewGzipLevelHandler(gzip.DefaultCompression)
+	return wrapper(h)
 }
 
 // acceptsGzip returns true if the given HTTP request indicates that it will
