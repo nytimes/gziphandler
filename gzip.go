@@ -22,21 +22,29 @@ type codings map[string]float64
 // The examples seem to indicate that it is.
 const DEFAULT_QVALUE = 1.0
 
-// gzipWriterPools maps compression level to a sync.Pool used to re-use instance
-// of gzip.Writer.
-var gzipWriterPools map[int]*sync.Pool
+// gzipWriterPools stores a sync.Pool for each compression level for re-uze of gzip.Writers.
+// Use poolIndex to covert a compression level to an index into gzipWriterPools.
+var gzipWriterPools [gzip.BestCompression - gzip.BestSpeed + 2]*sync.Pool
 
 func init() {
-	gzipWriterPools = make(map[int]*sync.Pool)
 	for i := gzip.BestSpeed; i <= gzip.BestCompression; i++ {
 		addLevelPool(i)
 	}
-	// gzip.DefaultCompression == -1, so we need to treat it special.
 	addLevelPool(gzip.DefaultCompression)
 }
 
+// poolIndex maps a compression level to its index into gzipWriterPools. It assumes that
+// level is a valid gzip compression level.
+func poolIndex(level int) int {
+	// gzip.DefaultCompression == -1, so we need to treat it special.
+	if level == gzip.DefaultCompression {
+		return gzip.BestCompression - gzip.BestSpeed + 1
+	}
+	return level - gzip.BestSpeed
+}
+
 func addLevelPool(level int) {
-	gzipWriterPools[level] = &sync.Pool{
+	gzipWriterPools[poolIndex(level)] = &sync.Pool{
 		New: func() interface{} {
 			// NewWriterLevel only returns error on a bad level, we are guaranteeing
 			// that this will be a valid level so it is okay to ignore the returned
@@ -81,7 +89,7 @@ func (w GzipResponseWriter) Flush() {
 // if an invalid gzip compression level is given, so if one can ensure the level
 // is valid, the returned error can be safely ignored.
 func NewGzipLevelHandler(level int) (func(http.Handler) http.Handler, error) {
-	if _, ok := gzipWriterPools[level]; !ok {
+	if level != gzip.DefaultCompression && (level < gzip.BestSpeed || level > gzip.BestCompression) {
 		return nil, fmt.Errorf("invalid compression level requested: %d", level)
 	}
 	return func(h http.Handler) http.Handler {
@@ -91,8 +99,8 @@ func NewGzipLevelHandler(level int) (func(http.Handler) http.Handler, error) {
 			if acceptsGzip(r) {
 				// Bytes written during ServeHTTP are redirected to this gzip writer
 				// before being written to the underlying response.
-				gzw := gzipWriterPools[level].Get().(*gzip.Writer)
-				defer gzipWriterPools[level].Put(gzw)
+				gzw := gzipWriterPools[poolIndex(level)].Get().(*gzip.Writer)
+				defer gzipWriterPools[poolIndex(level)].Put(gzw)
 				gzw.Reset(w)
 				defer gzw.Close()
 
