@@ -61,7 +61,7 @@ func TestGzipHandler(t *testing.T) {
 	assert.Equal(t, 200, res2.Code)
 	assert.Equal(t, "gzip", res2.Header().Get("Content-Encoding"))
 	assert.Equal(t, "Accept-Encoding", res2.Header().Get("Vary"))
-	assert.Equal(t, gzipStr(testBody), res2.Body.Bytes())
+	assert.Equal(t, gzipStrLevel(testBody, gzip.DefaultCompression), res2.Body.Bytes())
 
 	// content-type header is correctly set based on uncompressed body
 
@@ -71,6 +71,51 @@ func TestGzipHandler(t *testing.T) {
 	handler.ServeHTTP(res3, req3)
 
 	assert.Equal(t, http.DetectContentType([]byte(testBody)), res3.Header().Get("Content-Type"))
+}
+
+func TestNewGzipLevelHandler(t *testing.T) {
+	testBody := "aaabbbccc"
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, testBody)
+	})
+
+	for lvl := gzip.BestSpeed; lvl <= gzip.BestCompression; lvl++ {
+		wrapper, err := NewGzipLevelHandler(lvl)
+		if !assert.Nil(t, err, "NewGzipLevleHandler returned error for level:", lvl) {
+			continue
+		}
+
+		req, _ := http.NewRequest("GET", "/whatever", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		res := httptest.NewRecorder()
+		wrapper(handler).ServeHTTP(res, req)
+
+		assert.Equal(t, 200, res.Code)
+		assert.Equal(t, "gzip", res.Header().Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", res.Header().Get("Vary"))
+		assert.Equal(t, gzipStrLevel(testBody, lvl), res.Body.Bytes())
+
+	}
+}
+
+func TestNewGzipLevelHandlerReturnsErrorForInvalidLevels(t *testing.T) {
+	var err error
+	_, err = NewGzipLevelHandler(-42)
+	assert.NotNil(t, err)
+
+	_, err = NewGzipLevelHandler(42)
+	assert.NotNil(t, err)
+}
+
+func TestMustNewGzipLevelHandlerWillPanic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("panic was not called")
+		}
+	}()
+
+	_ = MustNewGzipLevelHandler(-42)
+
 }
 
 // --------------------------------------------------------------------
@@ -84,9 +129,9 @@ func BenchmarkGzipHandler_P100k(b *testing.B) { benchmark(b, true, 102400) }
 
 // --------------------------------------------------------------------
 
-func gzipStr(s string) []byte {
+func gzipStrLevel(s string, lvl int) []byte {
 	var b bytes.Buffer
-	w := gzip.NewWriter(&b)
+	w, _ := gzip.NewWriterLevel(&b, lvl)
 	io.WriteString(w, s)
 	w.Close()
 	return b.Bytes()

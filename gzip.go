@@ -22,8 +22,37 @@ type codings map[string]float64
 // The examples seem to indicate that it is.
 const DEFAULT_QVALUE = 1.0
 
-var gzipWriterPool = sync.Pool{
-	New: func() interface{} { return gzip.NewWriter(nil) },
+// gzipWriterPools stores a sync.Pool for each compression level for re-uze of gzip.Writers.
+// Use poolIndex to covert a compression level to an index into gzipWriterPools.
+var gzipWriterPools [gzip.BestCompression - gzip.BestSpeed + 2]*sync.Pool
+
+func init() {
+	for i := gzip.BestSpeed; i <= gzip.BestCompression; i++ {
+		addLevelPool(i)
+	}
+	addLevelPool(gzip.DefaultCompression)
+}
+
+// poolIndex maps a compression level to its index into gzipWriterPools. It assumes that
+// level is a valid gzip compression level.
+func poolIndex(level int) int {
+	// gzip.DefaultCompression == -1, so we need to treat it special.
+	if level == gzip.DefaultCompression {
+		return gzip.BestCompression - gzip.BestSpeed + 1
+	}
+	return level - gzip.BestSpeed
+}
+
+func addLevelPool(level int) {
+	gzipWriterPools[poolIndex(level)] = &sync.Pool{
+		New: func() interface{} {
+			// NewWriterLevel only returns error on a bad level, we are guaranteeing
+			// that this will be a valid level so it is okay to ignore the returned
+			// error.
+			w, _ := gzip.NewWriterLevel(nil, level)
+			return w
+		},
+	}
 }
 
 // GzipResponseWriter provides an http.ResponseWriter interface, which gzips
@@ -53,26 +82,53 @@ func (w GzipResponseWriter) Flush() {
 	}
 }
 
+// MustNewGzipLevelHandler behaves just like NewGzipLevelHandler except that in an error case
+// it panics rather than returning an error.
+func MustNewGzipLevelHandler(level int) func(http.Handler) http.Handler {
+	wrap, err := NewGzipLevelHandler(level)
+	if err != nil {
+		panic(err)
+	}
+	return wrap
+}
+
+// NewGzipLevelHandler returns a wrapper function (often known as middleware)
+// which can be used to wrap an HTTP handler to transparently gzip the response
+// body if the client supports it (via the Accept-Encoding header). Responses will
+// be encoded at the given gzip compression level. An error will be returned only
+// if an invalid gzip compression level is given, so if one can ensure the level
+// is valid, the returned error can be safely ignored.
+func NewGzipLevelHandler(level int) (func(http.Handler) http.Handler, error) {
+	if level != gzip.DefaultCompression && (level < gzip.BestSpeed || level > gzip.BestCompression) {
+		return nil, fmt.Errorf("invalid compression level requested: %d", level)
+	}
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Add(vary, acceptEncoding)
+
+			if acceptsGzip(r) {
+				// Bytes written during ServeHTTP are redirected to this gzip writer
+				// before being written to the underlying response.
+				gzw := gzipWriterPools[poolIndex(level)].Get().(*gzip.Writer)
+				defer gzipWriterPools[poolIndex(level)].Put(gzw)
+				gzw.Reset(w)
+				defer gzw.Close()
+
+				w.Header().Set(contentEncoding, "gzip")
+				h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
+			} else {
+				h.ServeHTTP(w, r)
+			}
+		})
+	}, nil
+}
+
 // GzipHandler wraps an HTTP handler, to transparently gzip the response body if
-// the client supports it (via the Accept-Encoding header).
+// the client supports it (via the Accept-Encoding header). This will compress at
+// the default compression level.
 func GzipHandler(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Add(vary, acceptEncoding)
-
-		if acceptsGzip(r) {
-			// Bytes written during ServeHTTP are redirected to this gzip writer
-			// before being written to the underlying response.
-			gzw := gzipWriterPool.Get().(*gzip.Writer)
-			defer gzipWriterPool.Put(gzw)
-			gzw.Reset(w)
-			defer gzw.Close()
-
-			w.Header().Set(contentEncoding, "gzip")
-			h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
-		} else {
-			h.ServeHTTP(w, r)
-		}
-	})
+	wrapper, _ := NewGzipLevelHandler(gzip.DefaultCompression)
+	return wrapper(h)
 }
 
 // acceptsGzip returns true if the given HTTP request indicates that it will
