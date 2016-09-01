@@ -59,12 +59,19 @@ func addLevelPool(level int) {
 // bytes before writing them to the underlying response. This doesn't set the
 // Content-Encoding header, nor close the writers, so don't forget to do that.
 type GzipResponseWriter struct {
-	gw *gzip.Writer
 	http.ResponseWriter
+	level int
+	gw    *gzip.Writer
 }
 
 // Write appends data to the gzip writer.
-func (w GzipResponseWriter) Write(b []byte) (int, error) {
+func (w *GzipResponseWriter) Write(b []byte) (int, error) {
+	// Lazily create the gzip.Writer, this allows empty bodies to be actually
+	// empty, for example in the case of status code 204 (no content).
+	if w.gw == nil {
+		w.init()
+	}
+
 	if _, ok := w.Header()["Content-Type"]; !ok {
 		// If content type is not set, infer it from the uncompressed body.
 		w.Header().Set("Content-Type", http.DetectContentType(b))
@@ -72,11 +79,36 @@ func (w GzipResponseWriter) Write(b []byte) (int, error) {
 	return w.gw.Write(b)
 }
 
+// init graps a new gzip writer from the gzipWriterPool and writes the correct
+// content encoding header.
+func (w *GzipResponseWriter) init() {
+	// Bytes written during ServeHTTP are redirected to this gzip writer
+	// before being written to the underlying response.
+	gzw := gzipWriterPools[poolIndex(w.level)].Get().(*gzip.Writer)
+	gzw.Reset(w.ResponseWriter)
+	w.gw = gzw
+	w.ResponseWriter.Header().Set(contentEncoding, "gzip")
+}
+
+// Close will close the gzip.Writer and will put it back in the gzipWriterPool.
+func (w *GzipResponseWriter) Close() error {
+	if w.gw == nil {
+		return nil
+	}
+
+	err := w.gw.Close()
+	gzipWriterPools[poolIndex(w.level)].Put(w.gw)
+	return err
+}
+
 // Flush flushes the underlying *gzip.Writer and then the underlying
 // http.ResponseWriter if it is an http.Flusher. This makes GzipResponseWriter
 // an http.Flusher.
-func (w GzipResponseWriter) Flush() {
-	w.gw.Flush()
+func (w *GzipResponseWriter) Flush() {
+	if w.gw != nil {
+		w.gw.Flush()
+	}
+
 	if fw, ok := w.ResponseWriter.(http.Flusher); ok {
 		fw.Flush()
 	}
@@ -107,15 +139,13 @@ func NewGzipLevelHandler(level int) (func(http.Handler) http.Handler, error) {
 			w.Header().Add(vary, acceptEncoding)
 
 			if acceptsGzip(r) {
-				// Bytes written during ServeHTTP are redirected to this gzip writer
-				// before being written to the underlying response.
-				gzw := gzipWriterPools[poolIndex(level)].Get().(*gzip.Writer)
-				defer gzipWriterPools[poolIndex(level)].Put(gzw)
-				gzw.Reset(w)
-				defer gzw.Close()
+				gw := &GzipResponseWriter{
+					ResponseWriter: w,
+					level:          level,
+				}
+				defer gw.Close()
 
-				w.Header().Set(contentEncoding, "gzip")
-				h.ServeHTTP(GzipResponseWriter{gzw, w}, r)
+				h.ServeHTTP(gw, r)
 			} else {
 				h.ServeHTTP(w, r)
 			}

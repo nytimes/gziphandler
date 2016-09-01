@@ -115,7 +115,38 @@ func TestMustNewGzipLevelHandlerWillPanic(t *testing.T) {
 	}()
 
 	_ = MustNewGzipLevelHandler(-42)
+}
 
+func TestGzipHandlerNoBody(t *testing.T) {
+	tests := []struct {
+		statusCode int
+	}{
+		{http.StatusOK}, // Can contain a body.
+		// Body must be empty.
+		{http.StatusNoContent},
+		{http.StatusNotModified},
+	}
+
+	for _, test := range tests {
+		handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(test.statusCode)
+		}))
+
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		handler.ServeHTTP(rec, req)
+		res := rec.Result()
+
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			t.Fatalf("Unexpected error reading response body: %v", err)
+		}
+
+		assert.Equal(t, "", res.Header.Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+		assert.Equal(t, 0, len(body))
+	}
 }
 
 // --------------------------------------------------------------------
