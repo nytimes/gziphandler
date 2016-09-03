@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -133,18 +134,27 @@ func TestGzipHandlerNoBody(t *testing.T) {
 		}))
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("GET", "/", nil)
+		// TODO: in Go1.7 httptest.NewRequest was introduced this should be used
+		// once 1.7 is not longer supported.
+		req := &http.Request{
+			Method:     "GET",
+			URL:        &url.URL{Path: "/"},
+			Proto:      "HTTP/1.1",
+			ProtoMinor: 1,
+			RemoteAddr: "192.0.2.1:1234",
+			Header:     make(http.Header),
+		}
 		req.Header.Set("Accept-Encoding", "gzip")
 		handler.ServeHTTP(rec, req)
-		res := rec.Result()
 
-		body, err := ioutil.ReadAll(res.Body)
+		body, err := ioutil.ReadAll(rec.Body)
 		if err != nil {
 			t.Fatalf("Unexpected error reading response body: %v", err)
 		}
 
-		assert.Equal(t, "", res.Header.Get("Content-Encoding"))
-		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+		header := rec.Header()
+		assert.Equal(t, "", header.Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", header.Get("Vary"))
 		assert.Equal(t, 0, len(body))
 	}
 }
