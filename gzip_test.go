@@ -3,6 +3,7 @@ package gziphandler
 import (
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -124,15 +125,18 @@ func TestMustNewGzipLevelHandlerWillPanic(t *testing.T) {
 
 func TestGzipHandlerNoBody(t *testing.T) {
 	tests := []struct {
-		statusCode int
+		statusCode      int
+		contentEncoding string
+		bodyLen         int
 	}{
-		{http.StatusOK}, // Can contain a body.
 		// Body must be empty.
-		{http.StatusNoContent},
-		{http.StatusNotModified},
+		{http.StatusNoContent, "", 0},
+		{http.StatusNotModified, "", 0},
+		// Body is going to get gzip'd no matter what.
+		{http.StatusOK, "gzip", 23},
 	}
 
-	for _, test := range tests {
+	for num, test := range tests {
 		handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(test.statusCode)
 		}))
@@ -157,9 +161,9 @@ func TestGzipHandlerNoBody(t *testing.T) {
 		}
 
 		header := rec.Header()
-		assert.Equal(t, "", header.Get("Content-Encoding"))
-		assert.Equal(t, "Accept-Encoding", header.Get("Vary"))
-		assert.Equal(t, 0, len(body))
+		assert.Equal(t, test.contentEncoding, header.Get("Content-Encoding"), fmt.Sprintf("for test iteration %d", num))
+		assert.Equal(t, "Accept-Encoding", header.Get("Vary"), fmt.Sprintf("for test iteration %d", num))
+		assert.Equal(t, test.bodyLen, len(body), fmt.Sprintf("for test iteration %d", num))
 	}
 }
 

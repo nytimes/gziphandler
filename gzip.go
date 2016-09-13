@@ -79,6 +79,16 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 	return w.gw.Write(b)
 }
 
+// WriteHeader will check if the gzip writer needs to be lazily initiated and
+// then pass the code along to the underlying ResponseWriter.
+func (w *GzipResponseWriter) WriteHeader(code int) {
+	if w.gw == nil &&
+		code != http.StatusNotModified && code != http.StatusNoContent {
+		w.init()
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
 // init graps a new gzip writer from the gzipWriterPool and writes the correct
 // content encoding header.
 func (w *GzipResponseWriter) init() {
