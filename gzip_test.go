@@ -3,6 +3,7 @@ package gziphandler
 import (
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -18,15 +19,15 @@ func TestParseEncodings(t *testing.T) {
 	examples := map[string]codings{
 
 		// Examples from RFC 2616
-		"compress, gzip": codings{"compress": 1.0, "gzip": 1.0},
-		"":               codings{},
-		"*":              codings{"*": 1.0},
-		"compress;q=0.5, gzip;q=1.0":         codings{"compress": 0.5, "gzip": 1.0},
-		"gzip;q=1.0, identity; q=0.5, *;q=0": codings{"gzip": 1.0, "identity": 0.5, "*": 0.0},
+		"compress, gzip": {"compress": 1.0, "gzip": 1.0},
+		"":               {},
+		"*":              {"*": 1.0},
+		"compress;q=0.5, gzip;q=1.0":         {"compress": 0.5, "gzip": 1.0},
+		"gzip;q=1.0, identity; q=0.5, *;q=0": {"gzip": 1.0, "identity": 0.5, "*": 0.0},
 
 		// More random stuff
-		"AAA;q=1":     codings{"aaa": 1.0},
-		"BBB ; q = 2": codings{"bbb": 1.0},
+		"AAA;q=1":     {"aaa": 1.0},
+		"BBB ; q = 2": {"bbb": 1.0},
 	}
 
 	for eg, exp := range examples {
@@ -44,25 +45,27 @@ func TestGzipHandler(t *testing.T) {
 	// requests without accept-encoding are passed along as-is
 
 	req1, _ := http.NewRequest("GET", "/whatever", nil)
-	res1 := httptest.NewRecorder()
-	handler.ServeHTTP(res1, req1)
+	resp1 := httptest.NewRecorder()
+	handler.ServeHTTP(resp1, req1)
+	res1 := resp1.Result()
 
-	assert.Equal(t, 200, res1.Code)
-	assert.Equal(t, "", res1.Header().Get("Content-Encoding"))
-	assert.Equal(t, "Accept-Encoding", res1.Header().Get("Vary"))
-	assert.Equal(t, testBody, res1.Body.String())
+	assert.Equal(t, 200, res1.StatusCode)
+	assert.Equal(t, "", res1.Header.Get("Content-Encoding"))
+	assert.Equal(t, "Accept-Encoding", res1.Header.Get("Vary"))
+	assert.Equal(t, testBody, resp1.Body.String())
 
 	// but requests with accept-encoding:gzip are compressed if possible
 
 	req2, _ := http.NewRequest("GET", "/whatever", nil)
 	req2.Header.Set("Accept-Encoding", "gzip")
-	res2 := httptest.NewRecorder()
-	handler.ServeHTTP(res2, req2)
+	resp2 := httptest.NewRecorder()
+	handler.ServeHTTP(resp2, req2)
+	res2 := resp2.Result()
 
-	assert.Equal(t, 200, res2.Code)
-	assert.Equal(t, "gzip", res2.Header().Get("Content-Encoding"))
-	assert.Equal(t, "Accept-Encoding", res2.Header().Get("Vary"))
-	assert.Equal(t, gzipStrLevel(testBody, gzip.DefaultCompression), res2.Body.Bytes())
+	assert.Equal(t, 200, res2.StatusCode)
+	assert.Equal(t, "gzip", res2.Header.Get("Content-Encoding"))
+	assert.Equal(t, "Accept-Encoding", res2.Header.Get("Vary"))
+	assert.Equal(t, gzipStrLevel(testBody, gzip.DefaultCompression), resp2.Body.Bytes())
 
 	// content-type header is correctly set based on uncompressed body
 
@@ -77,6 +80,7 @@ func TestGzipHandler(t *testing.T) {
 func TestNewGzipLevelHandler(t *testing.T) {
 	testBody := "aaabbbccc"
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, testBody)
 	})
 
@@ -88,13 +92,14 @@ func TestNewGzipLevelHandler(t *testing.T) {
 
 		req, _ := http.NewRequest("GET", "/whatever", nil)
 		req.Header.Set("Accept-Encoding", "gzip")
-		res := httptest.NewRecorder()
-		wrapper(handler).ServeHTTP(res, req)
+		resp := httptest.NewRecorder()
+		wrapper(handler).ServeHTTP(resp, req)
+		res := resp.Result()
 
-		assert.Equal(t, 200, res.Code)
-		assert.Equal(t, "gzip", res.Header().Get("Content-Encoding"))
-		assert.Equal(t, "Accept-Encoding", res.Header().Get("Vary"))
-		assert.Equal(t, gzipStrLevel(testBody, lvl), res.Body.Bytes())
+		assert.Equal(t, 200, res.StatusCode)
+		assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+		assert.Equal(t, gzipStrLevel(testBody, lvl), resp.Body.Bytes())
 
 	}
 }
@@ -120,15 +125,18 @@ func TestMustNewGzipLevelHandlerWillPanic(t *testing.T) {
 
 func TestGzipHandlerNoBody(t *testing.T) {
 	tests := []struct {
-		statusCode int
+		statusCode      int
+		contentEncoding string
+		bodyLen         int
 	}{
-		{http.StatusOK}, // Can contain a body.
 		// Body must be empty.
-		{http.StatusNoContent},
-		{http.StatusNotModified},
+		{http.StatusNoContent, "", 0},
+		{http.StatusNotModified, "", 0},
+		// Body is going to get gzip'd no matter what.
+		{http.StatusOK, "gzip", 23},
 	}
 
-	for _, test := range tests {
+	for num, test := range tests {
 		handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(test.statusCode)
 		}))
@@ -153,9 +161,9 @@ func TestGzipHandlerNoBody(t *testing.T) {
 		}
 
 		header := rec.Header()
-		assert.Equal(t, "", header.Get("Content-Encoding"))
-		assert.Equal(t, "Accept-Encoding", header.Get("Vary"))
-		assert.Equal(t, 0, len(body))
+		assert.Equal(t, test.contentEncoding, header.Get("Content-Encoding"), fmt.Sprintf("for test iteration %d", num))
+		assert.Equal(t, "Accept-Encoding", header.Get("Vary"), fmt.Sprintf("for test iteration %d", num))
+		assert.Equal(t, test.bodyLen, len(body), fmt.Sprintf("for test iteration %d", num))
 	}
 }
 
