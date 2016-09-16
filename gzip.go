@@ -22,16 +22,15 @@ type codings map[string]float64
 // The examples seem to indicate that it is.
 const DEFAULT_QVALUE = 1.0
 
+// gzipWriterPoolsMu protects gzipWriterPools, but is only used by addLevelPool.
+// It only protects the array, not the values in the array. So it's safe to use
+// the sync.Pools without any locks. The lock is only used by addLevelPool to
+// initialize the sync.Pool and set it in the array.
+var gzipWriterPoolsMu sync.Mutex
+
 // gzipWriterPools stores a sync.Pool for each compression level for re-uze of gzip.Writers.
 // Use poolIndex to covert a compression level to an index into gzipWriterPools.
 var gzipWriterPools [gzip.BestCompression - gzip.BestSpeed + 2]*sync.Pool
-
-func init() {
-	for i := gzip.BestSpeed; i <= gzip.BestCompression; i++ {
-		addLevelPool(i)
-	}
-	addLevelPool(gzip.DefaultCompression)
-}
 
 // poolIndex maps a compression level to its index into gzipWriterPools. It assumes that
 // level is a valid gzip compression level.
@@ -43,8 +42,20 @@ func poolIndex(level int) int {
 	return level - gzip.BestSpeed
 }
 
-func addLevelPool(level int) {
-	gzipWriterPools[poolIndex(level)] = &sync.Pool{
+func addLevelPool(level int) error {
+	if level != gzip.DefaultCompression && (level < gzip.BestSpeed || level > gzip.BestCompression) {
+		return fmt.Errorf("invalid compression level requested: %d", level)
+	}
+	index := poolIndex(level)
+
+	gzipWriterPoolsMu.Lock()
+	defer gzipWriterPoolsMu.Unlock()
+
+	if gzipWriterPools[index] != nil {
+		return nil
+	}
+
+	gzipWriterPools[index] = &sync.Pool{
 		New: func() interface{} {
 			// NewWriterLevel only returns error on a bad level, we are guaranteeing
 			// that this will be a valid level so it is okay to ignore the returned
@@ -53,6 +64,8 @@ func addLevelPool(level int) {
 			return w
 		},
 	}
+
+	return nil
 }
 
 // GzipResponseWriter provides an http.ResponseWriter interface, which gzips
@@ -141,9 +154,11 @@ func MustNewGzipLevelHandler(level int) func(http.Handler) http.Handler {
 // if an invalid gzip compression level is given, so if one can ensure the level
 // is valid, the returned error can be safely ignored.
 func NewGzipLevelHandler(level int) (func(http.Handler) http.Handler, error) {
-	if level != gzip.DefaultCompression && (level < gzip.BestSpeed || level > gzip.BestCompression) {
-		return nil, fmt.Errorf("invalid compression level requested: %d", level)
+	err := addLevelPool(level)
+	if err != nil {
+		return nil, err
 	}
+
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(vary, acceptEncoding)
