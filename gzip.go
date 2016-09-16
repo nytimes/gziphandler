@@ -188,14 +188,13 @@ func acceptsGzip(r *http.Request) bool {
 // See: http://tools.ietf.org/html/rfc2616#section-14.3.
 func parseEncodings(s string) (codings, error) {
 	c := make(codings)
-	e := make([]string, 0)
+	var e []string
 
 	for _, ss := range strings.Split(s, ",") {
 		coding, qvalue, err := parseCoding(ss)
 
 		if err != nil {
 			e = append(e, err.Error())
-
 		} else {
 			c[coding] = qvalue
 		}
@@ -220,13 +219,11 @@ func parseCoding(s string) (coding string, qvalue float64, err error) {
 
 		if n == 0 {
 			coding = strings.ToLower(part)
-
 		} else if strings.HasPrefix(part, "q=") {
 			qvalue, err = strconv.ParseFloat(strings.TrimPrefix(part, "q="), 64)
 
 			if qvalue < 0.0 {
 				qvalue = 0.0
-
 			} else if qvalue > 1.0 {
 				qvalue = 1.0
 			}
