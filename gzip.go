@@ -22,8 +22,9 @@ type codings map[string]float64
 // The examples seem to indicate that it is.
 const DEFAULT_QVALUE = 1.0
 
-// gzipWriterPools stores a sync.Pool for each compression level for re-uze of gzip.Writers.
-// Use poolIndex to covert a compression level to an index into gzipWriterPools.
+// gzipWriterPools stores a sync.Pool for each compression level for reuse of
+// gzip.Writers. Use poolIndex to covert a compression level to an index into
+// gzipWriterPools.
 var gzipWriterPools [gzip.BestCompression - gzip.BestSpeed + 2]*sync.Pool
 
 func init() {
@@ -33,8 +34,8 @@ func init() {
 	addLevelPool(gzip.DefaultCompression)
 }
 
-// poolIndex maps a compression level to its index into gzipWriterPools. It assumes that
-// level is a valid gzip compression level.
+// poolIndex maps a compression level to its index into gzipWriterPools. It
+// assumes that level is a valid gzip compression level.
 func poolIndex(level int) int {
 	// gzip.DefaultCompression == -1, so we need to treat it special.
 	if level == gzip.DefaultCompression {
@@ -124,8 +125,8 @@ func (w *GzipResponseWriter) Flush() {
 	}
 }
 
-// MustNewGzipLevelHandler behaves just like NewGzipLevelHandler except that in an error case
-// it panics rather than returning an error.
+// MustNewGzipLevelHandler behaves just like NewGzipLevelHandler except that in
+// an error case it panics rather than returning an error.
 func MustNewGzipLevelHandler(level int) func(http.Handler) http.Handler {
 	wrap, err := NewGzipLevelHandler(level)
 	if err != nil {
@@ -180,21 +181,20 @@ func acceptsGzip(r *http.Request) bool {
 
 // parseEncodings attempts to parse a list of codings, per RFC 2616, as might
 // appear in an Accept-Encoding header. It returns a map of content-codings to
-// quality values, and an error containing the errors encounted. It's probably
+// quality values, and an error containing the errors encountered. It's probably
 // safe to ignore those, because silently ignoring errors is how the internet
 // works.
 //
-// See: http://tools.ietf.org/html/rfc2616#section-14.3
+// See: http://tools.ietf.org/html/rfc2616#section-14.3.
 func parseEncodings(s string) (codings, error) {
 	c := make(codings)
-	e := make([]string, 0)
+	var e []string
 
 	for _, ss := range strings.Split(s, ",") {
 		coding, qvalue, err := parseCoding(ss)
 
 		if err != nil {
 			e = append(e, err.Error())
-
 		} else {
 			c[coding] = qvalue
 		}
@@ -219,13 +219,11 @@ func parseCoding(s string) (coding string, qvalue float64, err error) {
 
 		if n == 0 {
 			coding = strings.ToLower(part)
-
 		} else if strings.HasPrefix(part, "q=") {
 			qvalue, err = strconv.ParseFloat(strings.TrimPrefix(part, "q="), 64)
 
 			if qvalue < 0.0 {
 				qvalue = 0.0
-
 			} else if qvalue > 1.0 {
 				qvalue = 1.0
 			}
