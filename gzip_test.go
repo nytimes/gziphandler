@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -143,7 +145,7 @@ func TestGzipHandlerNoBody(t *testing.T) {
 
 		rec := httptest.NewRecorder()
 		// TODO: in Go1.7 httptest.NewRequest was introduced this should be used
-		// once 1.7 is not longer supported.
+		// once 1.6 is not longer supported.
 		req := &http.Request{
 			Method:     "GET",
 			URL:        &url.URL{Path: "/"},
@@ -165,6 +167,52 @@ func TestGzipHandlerNoBody(t *testing.T) {
 		assert.Equal(t, "Accept-Encoding", header.Get("Vary"), fmt.Sprintf("for test iteration %d", num))
 		assert.Equal(t, test.bodyLen, len(body), fmt.Sprintf("for test iteration %d", num))
 	}
+}
+
+func TestGzipHandlerContentLength(t *testing.T) {
+	b := []byte("testtesttesttesttesttesttesttesttesttesttesttesttest")
+	handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+		w.Write(b)
+	}))
+	// httptest.NewRecorder doesn't give you access to the Content-Length
+	// header so instead, we create a server on a random port and make
+	// a request to that instead
+	ln, err := net.Listen("tcp", "127.0.0.1:")
+	if err != nil {
+		t.Fatalf("failed creating listen socket: %v", err)
+	}
+	defer ln.Close()
+	srv := &http.Server{
+		Handler: handler,
+	}
+	go srv.Serve(ln)
+
+	req := &http.Request{
+		Method: "GET",
+		URL:    &url.URL{Path: "/", Scheme: "http", Host: ln.Addr().String()},
+		Header: make(http.Header),
+		Close:  true,
+	}
+	req.Header.Set("Accept-Encoding", "gzip")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Unexpected error making http request: %v", err)
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("Unexpected error reading response body: %v", err)
+	}
+
+	l, err := strconv.Atoi(res.Header.Get("Content-Length"))
+	if err != nil {
+		t.Fatalf("Unexpected error parsing Content-Length: %v", err)
+	}
+	assert.Len(t, body, l)
+	assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+	assert.NotEqual(t, b, body)
 }
 
 // --------------------------------------------------------------------

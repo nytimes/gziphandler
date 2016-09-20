@@ -13,6 +13,8 @@ const (
 	vary            = "Vary"
 	acceptEncoding  = "Accept-Encoding"
 	contentEncoding = "Content-Encoding"
+	contentType     = "Content-Type"
+	contentLength   = "Content-Length"
 )
 
 type codings map[string]float64
@@ -56,8 +58,8 @@ func addLevelPool(level int) {
 }
 
 // GzipResponseWriter provides an http.ResponseWriter interface, which gzips
-// bytes before writing them to the underlying response. This doesn't set the
-// Content-Encoding header, nor close the writers, so don't forget to do that.
+// bytes before writing them to the underlying response. This doesn't close the
+// writers, so don't forget to do that.
 type GzipResponseWriter struct {
 	http.ResponseWriter
 	level int
@@ -72,9 +74,9 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 		w.init()
 	}
 
-	if _, ok := w.Header()["Content-Type"]; !ok {
+	if _, ok := w.Header()[contentType]; !ok {
 		// If content type is not set, infer it from the uncompressed body.
-		w.Header().Set("Content-Type", http.DetectContentType(b))
+		w.Header().Set(contentType, http.DetectContentType(b))
 	}
 	return w.gw.Write(b)
 }
@@ -98,6 +100,10 @@ func (w *GzipResponseWriter) init() {
 	gzw.Reset(w.ResponseWriter)
 	w.gw = gzw
 	w.ResponseWriter.Header().Set(contentEncoding, "gzip")
+	// if the Content-Length is already set, then calls to Write on gzip
+	// will fail to set the Content-Length header since its already set
+	// See: https://github.com/golang/go/issues/14975
+	w.ResponseWriter.Header().Del(contentLength)
 }
 
 // Close will close the gzip.Writer and will put it back in the gzipWriterPool.
