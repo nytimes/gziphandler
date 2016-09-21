@@ -63,7 +63,7 @@ func addLevelPool(level int) {
 // writers, so don't forget to do that.
 type GzipResponseWriter struct {
 	http.ResponseWriter
-	level int
+	index int // Index for gzipWriterPools.
 	gw    *gzip.Writer
 }
 
@@ -97,7 +97,7 @@ func (w *GzipResponseWriter) WriteHeader(code int) {
 func (w *GzipResponseWriter) init() {
 	// Bytes written during ServeHTTP are redirected to this gzip writer
 	// before being written to the underlying response.
-	gzw := gzipWriterPools[poolIndex(w.level)].Get().(*gzip.Writer)
+	gzw := gzipWriterPools[w.level].Get().(*gzip.Writer)
 	gzw.Reset(w.ResponseWriter)
 	w.gw = gzw
 	w.ResponseWriter.Header().Set(contentEncoding, "gzip")
@@ -114,7 +114,7 @@ func (w *GzipResponseWriter) Close() error {
 	}
 
 	err := w.gw.Close()
-	gzipWriterPools[poolIndex(w.level)].Put(w.gw)
+	gzipWriterPools[w.level].Put(w.gw)
 	return err
 }
 
@@ -152,13 +152,15 @@ func NewGzipLevelHandler(level int) (func(http.Handler) http.Handler, error) {
 		return nil, fmt.Errorf("invalid compression level requested: %d", level)
 	}
 	return func(h http.Handler) http.Handler {
+		index := poolIndex(level)
+
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(vary, acceptEncoding)
 
 			if acceptsGzip(r) {
 				gw := &GzipResponseWriter{
 					ResponseWriter: w,
-					level:          level,
+					level:          index,
 				}
 				defer gw.Close()
 
