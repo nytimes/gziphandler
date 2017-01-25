@@ -2,6 +2,7 @@ package gziphandler
 
 import (
 	"bytes"
+	"compress/flate"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -166,6 +167,69 @@ func TestGzipHandlerNoBody(t *testing.T) {
 		assert.Equal(t, test.contentEncoding, header.Get("Content-Encoding"), fmt.Sprintf("for test iteration %d", num))
 		assert.Equal(t, "Accept-Encoding", header.Get("Vary"), fmt.Sprintf("for test iteration %d", num))
 		assert.Equal(t, test.bodyLen, len(body), fmt.Sprintf("for test iteration %d", num))
+	}
+}
+
+func gzipString(in string) []byte {
+	var b bytes.Buffer
+	gz := gzip.NewWriter(&b)
+	gz.Write([]byte(in))
+	gz.Flush()
+	gz.Close()
+	return b.Bytes()
+}
+
+func deflateString(in string) []byte {
+	var b bytes.Buffer
+	f, _ := flate.NewWriter(&b, 1)
+	f.Write([]byte(in))
+	f.Flush()
+	f.Close()
+	return b.Bytes()
+}
+
+func TestGzipHandlerAlreadyCompressed(t *testing.T) {
+	tests := []struct {
+		statusCode     int
+		inputEncoding  string
+		outputEndoding string
+		body           []byte
+	}{
+		{http.StatusOK, "gzip", "gzip", gzipString("hello world\n")},
+		{http.StatusOK, "gzip", "gzip", gzipString("test 123")},
+		{http.StatusOK, "deflate", "deflate", deflateString("123456789")},
+	}
+
+	for num, test := range tests {
+		handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set(contentEncoding, test.inputEncoding)
+			w.WriteHeader(test.statusCode)
+			w.Write(test.body)
+		}))
+
+		rec := httptest.NewRecorder()
+		// TODO: in Go1.7 httptest.NewRequest was introduced this should be used
+		// once 1.6 is not longer supported.
+		req := &http.Request{
+			Method:     "GET",
+			URL:        &url.URL{Path: "/"},
+			Proto:      "HTTP/1.1",
+			ProtoMinor: 1,
+			RemoteAddr: "192.0.2.1:1234",
+			Header:     make(http.Header),
+		}
+		req.Header.Set("Accept-Encoding", "gzip")
+		handler.ServeHTTP(rec, req)
+
+		body, err := ioutil.ReadAll(rec.Body)
+		if err != nil {
+			t.Fatalf("Unexpected error reading response body: %v", err)
+		}
+
+		header := rec.Header()
+		assert.Equal(t, test.outputEndoding, header.Get("Content-Encoding"), fmt.Sprintf("for test iteration %d", num))
+		assert.Equal(t, "Accept-Encoding", header.Get("Vary"), fmt.Sprintf("for test iteration %d", num))
+		assert.Equal(t, len(test.body), len(body), fmt.Sprintf("for test iteration %d", num))
 	}
 }
 
