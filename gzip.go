@@ -65,8 +65,9 @@ func addLevelPool(level int) {
 // writers, so don't forget to do that.
 type GzipResponseWriter struct {
 	http.ResponseWriter
-	index int // Index for gzipWriterPools.
-	gw    *gzip.Writer
+	index    int // Index for gzipWriterPools.
+	gw       *gzip.Writer
+	compress bool
 }
 
 // Write appends data to the gzip writer.
@@ -81,7 +82,10 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 		// If content type is not set, infer it from the uncompressed body.
 		w.Header().Set(contentType, http.DetectContentType(b))
 	}
-	return w.gw.Write(b)
+	if w.compress {
+		return w.gw.Write(b)
+	}
+	return w.ResponseWriter.Write(b)
 }
 
 // WriteHeader will check if the gzip writer needs to be lazily initiated and
@@ -97,16 +101,23 @@ func (w *GzipResponseWriter) WriteHeader(code int) {
 // init graps a new gzip writer from the gzipWriterPool and writes the correct
 // content encoding header.
 func (w *GzipResponseWriter) init() {
+
 	// Bytes written during ServeHTTP are redirected to this gzip writer
 	// before being written to the underlying response.
 	gzw := gzipWriterPools[w.index].Get().(*gzip.Writer)
-	gzw.Reset(w.ResponseWriter)
+
 	w.gw = gzw
-	w.ResponseWriter.Header().Set(contentEncoding, "gzip")
-	// if the Content-Length is already set, then calls to Write on gzip
-	// will fail to set the Content-Length header since its already set
-	// See: https://github.com/golang/go/issues/14975
-	w.ResponseWriter.Header().Del(contentLength)
+
+	w.compress = notCompressed(w)
+
+	if w.compress {
+		gzw.Reset(w.ResponseWriter)
+		w.ResponseWriter.Header().Set(contentEncoding, "gzip")
+		// if the Content-Length is already set, then calls to Write on gzip
+		// will fail to set the Content-Length header since its already set
+		// See: https://github.com/golang/go/issues/14975
+		w.ResponseWriter.Header().Del(contentLength)
+	}
 }
 
 // Close will close the gzip.Writer and will put it back in the gzipWriterPool.
@@ -115,7 +126,10 @@ func (w *GzipResponseWriter) Close() error {
 		return nil
 	}
 
-	err := w.gw.Close()
+	var err error
+	if w.compress {
+		err = w.gw.Close()
+	}
 	gzipWriterPools[w.index].Put(w.gw)
 	return err
 }
@@ -124,7 +138,7 @@ func (w *GzipResponseWriter) Close() error {
 // http.ResponseWriter if it is an http.Flusher. This makes GzipResponseWriter
 // an http.Flusher.
 func (w *GzipResponseWriter) Flush() {
-	if w.gw != nil {
+	if w.gw != nil && w.compress {
 		w.gw.Flush()
 	}
 
@@ -199,6 +213,17 @@ func GzipHandler(h http.Handler) http.Handler {
 func acceptsGzip(r *http.Request) bool {
 	acceptedEncodings, _ := parseEncodings(r.Header.Get(acceptEncoding))
 	return acceptedEncodings["gzip"] > 0.0
+}
+
+// notCompressed returns true if the givven writer is not yet compressed.
+func notCompressed(w http.ResponseWriter) bool {
+	c := strings.ToLower(strings.TrimSpace(w.Header().Get(contentEncoding)))
+	switch c {
+	case "gzip", "deflate":
+		return false
+	default:
+		return true
+	}
 }
 
 // parseEncodings attempts to parse a list of codings, per RFC 2616, as might
