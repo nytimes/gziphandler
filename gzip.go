@@ -31,6 +31,10 @@ const DEFAULT_QVALUE = 1.0
 // gzipWriterPools.
 var gzipWriterPools [gzip.BestCompression - gzip.BestSpeed + 2]*sync.Pool
 
+// minSize gives the hability to skeep compression on response smaller than the
+// given size. The default value is 512 bytes.
+var minSize = 512
+
 func init() {
 	for i := gzip.BestSpeed; i <= gzip.BestCompression; i++ {
 		addLevelPool(i)
@@ -71,6 +75,12 @@ type GzipResponseWriter struct {
 
 // Write appends data to the gzip writer.
 func (w *GzipResponseWriter) Write(b []byte) (int, error) {
+	// If the response is not bigger than the defined minimum size
+	// before compression. The regular response writer is called instead
+	if len(b) < minSize {
+		return w.ResponseWriter.Write(b)
+	}
+
 	// Lazily create the gzip.Writer, this allows empty bodies to be actually
 	// empty, for example in the case of status code 204 (no content).
 	if w.gw == nil {
@@ -257,4 +267,16 @@ func parseCoding(s string) (coding string, qvalue float64, err error) {
 	}
 
 	return
+}
+
+// SetMinSize save the minimum response size to perfom gzip compression.
+func SetMinSize(wantedSize int) error {
+	if wantedSize < 0 {
+		return fmt.Errorf("Minimum size must be more than zero")
+	}
+
+	// Save the given value
+	minSize = wantedSize
+
+	return nil
 }

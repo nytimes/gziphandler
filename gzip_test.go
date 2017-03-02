@@ -10,11 +10,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestMain(m *testing.M) {
+	// Define the minimum size to zero to make the test working normaly
+	SetMinSize(0)
+
+	// Run all tests
+	os.Exit(m.Run())
+}
 
 func TestParseEncodings(t *testing.T) {
 
@@ -213,6 +222,47 @@ func TestGzipHandlerContentLength(t *testing.T) {
 	assert.Len(t, body, l)
 	assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
 	assert.NotEqual(t, b, body)
+}
+
+func TestGzipHandlerMinSize(t *testing.T) {
+	// Set the minimum size to compress
+	SetMinSize(12)
+
+	// Run a test with size smaller than the limit
+	b := bytes.NewBufferString("test")
+
+	handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp, _ := ioutil.ReadAll(r.Body)
+		w.Write(resp)
+	}))
+
+	req1, _ := http.NewRequest("GET", "/whatever", b)
+	req1.Header.Add("Accept-Encoding", "gzip")
+	resp1 := httptest.NewRecorder()
+	handler.ServeHTTP(resp1, req1)
+	res1 := resp1.Result()
+
+	if res1.Header.Get(contentEncoding) == "gzip" {
+		t.Errorf("The response is compress and should not")
+		return
+	}
+
+	// Run a test with size bigger than the limit
+	b = bytes.NewBufferString("testtesttesttesttesttesttesttesttesttesttesttesttest")
+
+	req2, _ := http.NewRequest("GET", "/whatever", b)
+	req2.Header.Add("Accept-Encoding", "gzip")
+	resp2 := httptest.NewRecorder()
+	handler.ServeHTTP(resp2, req2)
+	res2 := resp2.Result()
+
+	if res2.Header.Get(contentEncoding) != "gzip" {
+		t.Errorf("The response is not compress and should")
+		return
+	}
+
+	// Reset the size to zero
+	SetMinSize(0)
 }
 
 // --------------------------------------------------------------------
