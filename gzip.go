@@ -21,10 +21,10 @@ const (
 
 type codings map[string]float64
 
-// The default qvalue to assign to an encoding if no explicit qvalue is set.
+// DefaultQVALUE is the default qvalue to assign to an encoding if no explicit qvalue is set.
 // This is actually kind of ambiguous in RFC 2616, so hopefully it's correct.
 // The examples seem to indicate that it is.
-const DEFAULT_QVALUE = 1.0
+const DefaultQVALUE = 1.0
 
 // gzipWriterPools stores a sync.Pool for each compression level for reuse of
 // gzip.Writers. Use poolIndex to covert a compression level to an index into
@@ -247,7 +247,7 @@ func parseEncodings(s string) (codings, error) {
 func parseCoding(s string) (coding string, qvalue float64, err error) {
 	for n, part := range strings.Split(s, ";") {
 		part = strings.TrimSpace(part)
-		qvalue = DEFAULT_QVALUE
+		qvalue = DefaultQVALUE
 
 		if n == 0 {
 			coding = strings.ToLower(part)
