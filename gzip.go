@@ -186,7 +186,7 @@ func NewGzipLevelAndMinSize(level, askedMinSize int) (func(http.Handler) http.Ha
 		return nil, fmt.Errorf("invalid compression level requested: %d", level)
 	}
 	if askedMinSize < 0 {
-		return nil, fmt.Errorf("Minimum size must be more than zero")
+		return nil, fmt.Errorf("minimum size must be more than zero")
 	}
 	return func(h http.Handler) http.Handler {
 		index := poolIndex(level)
