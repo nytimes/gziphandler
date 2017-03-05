@@ -21,15 +21,24 @@ const (
 
 type codings map[string]float64
 
-// The default qvalue to assign to an encoding if no explicit qvalue is set.
-// This is actually kind of ambiguous in RFC 2616, so hopefully it's correct.
-// The examples seem to indicate that it is.
-const DEFAULT_QVALUE = 1.0
+const (
+	// DefaultQValue is the default qvalue to assign to an encoding if no explicit qvalue is set.
+	// This is actually kind of ambiguous in RFC 2616, so hopefully it's correct.
+	// The examples seem to indicate that it is.
+	DefaultQValue = 1.0
+
+	// DefaultMinSize defines the minimum size to reach to enable compression.
+	// It's 512 bytes.
+	DefaultMinSize = 512
+)
 
 // gzipWriterPools stores a sync.Pool for each compression level for reuse of
 // gzip.Writers. Use poolIndex to covert a compression level to an index into
 // gzipWriterPools.
 var gzipWriterPools [gzip.BestCompression - gzip.BestSpeed + 2]*sync.Pool
+
+// minSize gives the hability to skeep compression on response smaller than the
+// given size. The default value is 512 bytes.
 
 func init() {
 	for i := gzip.BestSpeed; i <= gzip.BestCompression; i++ {
@@ -65,12 +74,17 @@ func addLevelPool(level int) {
 // writers, so don't forget to do that.
 type GzipResponseWriter struct {
 	http.ResponseWriter
-	index int // Index for gzipWriterPools.
-	gw    *gzip.Writer
+	index   int // Index for gzipWriterPools.
+	gw      *gzip.Writer
+	minSize int
 }
 
 // Write appends data to the gzip writer.
 func (w *GzipResponseWriter) Write(b []byte) (int, error) {
+	if len(b) < w.minSize {
+		return w.ResponseWriter.Write(b)
+	}
+
 	// Lazily create the gzip.Writer, this allows empty bodies to be actually
 	// empty, for example in the case of status code 204 (no content).
 	if w.gw == nil {
@@ -162,8 +176,17 @@ func MustNewGzipLevelHandler(level int) func(http.Handler) http.Handler {
 // if an invalid gzip compression level is given, so if one can ensure the level
 // is valid, the returned error can be safely ignored.
 func NewGzipLevelHandler(level int) (func(http.Handler) http.Handler, error) {
+	return NewGzipLevelAndMinSize(level, DefaultMinSize)
+}
+
+// NewGzipLevelAndMinSize do as above but let caller specify the minimum size
+// before compression
+func NewGzipLevelAndMinSize(level, askedMinSize int) (func(http.Handler) http.Handler, error) {
 	if level != gzip.DefaultCompression && (level < gzip.BestSpeed || level > gzip.BestCompression) {
 		return nil, fmt.Errorf("invalid compression level requested: %d", level)
+	}
+	if askedMinSize < 0 {
+		return nil, fmt.Errorf("minimum size must be more than zero")
 	}
 	return func(h http.Handler) http.Handler {
 		index := poolIndex(level)
@@ -175,6 +198,7 @@ func NewGzipLevelHandler(level int) (func(http.Handler) http.Handler, error) {
 				gw := &GzipResponseWriter{
 					ResponseWriter: w,
 					index:          index,
+					minSize:        askedMinSize,
 				}
 				defer gw.Close()
 
@@ -237,7 +261,7 @@ func parseEncodings(s string) (codings, error) {
 func parseCoding(s string) (coding string, qvalue float64, err error) {
 	for n, part := range strings.Split(s, ";") {
 		part = strings.TrimSpace(part)
-		qvalue = DEFAULT_QVALUE
+		qvalue = DefaultQValue
 
 		if n == 0 {
 			coding = strings.ToLower(part)
