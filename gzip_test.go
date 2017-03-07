@@ -221,6 +221,8 @@ func TestGzipHandlerMinSize(t *testing.T) {
 		func(w http.ResponseWriter, r *http.Request) {
 			resp, _ := ioutil.ReadAll(r.Body)
 			w.Write(resp)
+			// Call write multiple times to pass through "chosenWriter"
+			w.Write(resp)
 		},
 	))
 

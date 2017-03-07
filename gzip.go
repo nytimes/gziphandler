@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -36,9 +37,6 @@ const (
 // gzip.Writers. Use poolIndex to covert a compression level to an index into
 // gzipWriterPools.
 var gzipWriterPools [gzip.BestCompression - gzip.BestSpeed + 2]*sync.Pool
-
-// minSize gives the hability to skeep compression on response smaller than the
-// given size. The default value is 512 bytes.
 
 func init() {
 	for i := gzip.BestSpeed; i <= gzip.BestCompression; i++ {
@@ -74,14 +72,20 @@ func addLevelPool(level int) {
 // writers, so don't forget to do that.
 type GzipResponseWriter struct {
 	http.ResponseWriter
-	index   int // Index for gzipWriterPools.
-	gw      *gzip.Writer
-	minSize int
+	index        int // Index for gzipWriterPools.
+	gw           *gzip.Writer
+	minSize      int
+	chosenWriter io.Writer // after the first Write call the ResponseWriter must use the same writer
 }
 
 // Write appends data to the gzip writer.
 func (w *GzipResponseWriter) Write(b []byte) (int, error) {
+	if w.chosenWriter != nil {
+		return w.chosenWriter.Write(b)
+	}
+
 	if len(b) < w.minSize {
+		w.chosenWriter = w.ResponseWriter
 		return w.ResponseWriter.Write(b)
 	}
 
@@ -90,6 +94,7 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 	if w.gw == nil {
 		w.init()
 	}
+	w.chosenWriter = w.gw
 
 	if _, ok := w.Header()[contentType]; !ok {
 		// If content type is not set, infer it from the uncompressed body.
