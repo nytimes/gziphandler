@@ -70,20 +70,23 @@ func addLevelPool(level int) {
 // GzipResponseWriter provides an http.ResponseWriter interface, which gzips
 // bytes before writing them to the underlying response. This doesn't close the
 // writers, so don't forget to do that.
+// It can be configured to skip response smaller than minSize.
 type GzipResponseWriter struct {
 	http.ResponseWriter
 	index        int // Index for gzipWriterPools.
 	gw           *gzip.Writer
-	minSize      int
-	chosenWriter io.Writer // after the first Write call the ResponseWriter must use the same writer
+	minSize      int       // Specifed the minimum response size to gzip. Only the first Write call is checked.
+	chosenWriter io.Writer // After the first Write call the ResponseWriter must use the same writer.
 }
 
 // Write appends data to the gzip writer.
 func (w *GzipResponseWriter) Write(b []byte) (int, error) {
+	// If a partial response have been send, the next response will use the same writer.
 	if w.chosenWriter != nil {
 		return w.chosenWriter.Write(b)
 	}
 
+	// If b is smaller than the minSize, the regular writer is used.
 	if len(b) < w.minSize {
 		w.chosenWriter = w.ResponseWriter
 		return w.ResponseWriter.Write(b)
@@ -184,8 +187,8 @@ func NewGzipLevelHandler(level int) (func(http.Handler) http.Handler, error) {
 	return NewGzipLevelAndMinSize(level, DefaultMinSize)
 }
 
-// NewGzipLevelAndMinSize do as above but let caller specify the minimum size
-// before compression
+// NewGzipLevelAndMinSize behave as NewGzipLevelHandler except it let the caller
+// specify the minimum size before compression.
 func NewGzipLevelAndMinSize(level, askedMinSize int) (func(http.Handler) http.Handler, error) {
 	if level != gzip.DefaultCompression && (level < gzip.BestSpeed || level > gzip.BestCompression) {
 		return nil, fmt.Errorf("invalid compression level requested: %d", level)
