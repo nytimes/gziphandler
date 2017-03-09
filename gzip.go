@@ -75,6 +75,9 @@ type GzipResponseWriter struct {
 	index int // Index for gzipWriterPools.
 	gw    *gzip.Writer
 
+	tmpHeader http.Header
+	code      int
+
 	minSize      int    // Specifed the minimum response size to gzip. Only the first Write call is checked.
 	buff         []byte // Holds the first part of the write before the reaching the minSize or the end of the write.
 	bytesWritten int    // Keep trace of the numbers of bytes written.
@@ -94,6 +97,8 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 	// Otherwise it save the write into a buffer and send it with the regular
 	// ResponseWriter at close.
 	if w.bytesWritten > w.minSize {
+		w.Header().Set(contentEncoding, "gzip")
+		w.writeHeader()
 		fmt.Println("open GZIP", w.bytesWritten > w.minSize, w.bytesWritten, w.minSize, len(b))
 		n := 0
 		// Lazily create the gzip.Writer, this allows empty bodies to be actually
@@ -140,11 +145,18 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 // then pass the code along to the underlying ResponseWriter.
 func (w *GzipResponseWriter) WriteHeader(code int) {
 	fmt.Println("write header")
-	// if w.gw == nil &&
-	// 	code != http.StatusNotModified && code != http.StatusNoContent {
-	// 	w.init()
-	// }
-	w.ResponseWriter.WriteHeader(code)
+	if w.gw == nil &&
+		code != http.StatusNotModified && code != http.StatusNoContent {
+		w.init()
+	}
+	w.code = code
+}
+
+func (w *GzipResponseWriter) writeHeader() {
+	if w.code == 0 {
+		w.code = http.StatusOK
+	}
+	w.ResponseWriter.WriteHeader(w.code)
 }
 
 // init graps a new gzip writer from the gzipWriterPool and writes the correct
@@ -158,7 +170,6 @@ func (w *GzipResponseWriter) init() {
 	gzw.Reset(w.ResponseWriter)
 	w.gw = gzw
 
-	w.Header().Set(contentEncoding, "gzip")
 	// if the Content-Length is already set, then calls to Write on gzip
 	// will fail to set the Content-Length header since its already set
 	// See: https://github.com/golang/go/issues/14975
@@ -169,9 +180,12 @@ func (w *GzipResponseWriter) init() {
 func (w *GzipResponseWriter) Close() error {
 	if w.buff != nil {
 		fmt.Println("close REGULAR:", string(w.buff))
+		w.ResponseWriter.Header().Del(contentEncoding)
+		w.writeHeader()
 		w.ResponseWriter.Write(w.buff)
 		return nil
 	}
+	w.writeHeader()
 
 	fmt.Println("close GZIP")
 
