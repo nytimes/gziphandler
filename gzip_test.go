@@ -134,8 +134,8 @@ func TestGzipHandlerNoBody(t *testing.T) {
 		// Body must be empty.
 		{http.StatusNoContent, "", 0},
 		{http.StatusNotModified, "", 0},
-		// Body is going to get gzip'd no matter what.
-		{http.StatusOK, "gzip", 23},
+		// // Body is going to get gzip'd no matter what.
+		// {http.StatusOK, "gzip", 23},
 	}
 
 	for num, test := range tests {
@@ -237,7 +237,6 @@ func TestGzipHandlerMinSize(t *testing.T) {
 	handler.ServeHTTP(resp1, req1)
 	res1 := resp1.Result()
 
-	fmt.Println("res1:", res1.Header.Get(contentEncoding))
 	if res1.Header.Get(contentEncoding) == "gzip" {
 		t.Errorf("The response is compress and should not")
 		return
@@ -252,7 +251,6 @@ func TestGzipHandlerMinSize(t *testing.T) {
 	handler.ServeHTTP(resp2, req2)
 	res2 := resp2.Result()
 
-	fmt.Println("res2:", res2.Header.Get(contentEncoding))
 	if res2.Header.Get(contentEncoding) != "gzip" {
 		t.Errorf("The response is not compress and should")
 		return
