@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"compress/gzip"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -73,58 +72,93 @@ func addLevelPool(level int) {
 // It can be configured to skip response smaller than minSize.
 type GzipResponseWriter struct {
 	http.ResponseWriter
-	index        int // Index for gzipWriterPools.
-	gw           *gzip.Writer
-	minSize      int       // Specifed the minimum response size to gzip. Only the first Write call is checked.
-	chosenWriter io.Writer // After the first Write call the ResponseWriter must use the same writer.
+	index int // Index for gzipWriterPools.
+	gw    *gzip.Writer
+
+	minSize      int    // Specifed the minimum response size to gzip. Only the first Write call is checked.
+	buff         []byte // Holds the first part of the write before the reaching the minSize or the end of the write.
+	bytesWritten int    // Keep trace of the numbers of bytes written.
 }
 
 // Write appends data to the gzip writer.
 func (w *GzipResponseWriter) Write(b []byte) (int, error) {
-	// If a partial response have been send, the next response will use the same writer.
-	if w.chosenWriter != nil {
-		return w.chosenWriter.Write(b)
-	}
-
-	// If b is smaller than the minSize, the regular writer is used.
-	if len(b) < w.minSize {
-		w.chosenWriter = w.ResponseWriter
-		return w.ResponseWriter.Write(b)
-	}
-
-	// Lazily create the gzip.Writer, this allows empty bodies to be actually
-	// empty, for example in the case of status code 204 (no content).
-	if w.gw == nil {
-		w.init()
-	}
-	w.chosenWriter = w.gw
+	// Update the numbers of bytes written.
+	w.bytesWritten += len(b)
 
 	if _, ok := w.Header()[contentType]; !ok {
 		// If content type is not set, infer it from the uncompressed body.
 		w.Header().Set(contentType, http.DetectContentType(b))
 	}
-	return w.gw.Write(b)
+
+	// If the global write is bigger than the minSize, compression is used.
+	// Otherwise it save the write into a buffer and send it with the regular
+	// ResponseWriter at close.
+	if w.bytesWritten > w.minSize {
+		fmt.Println("open GZIP", w.bytesWritten > w.minSize, w.bytesWritten, w.minSize, len(b))
+		n := 0
+		// Lazily create the gzip.Writer, this allows empty bodies to be actually
+		// empty, for example in the case of status code 204 (no content).
+		if w.buff != nil {
+			w.init()
+			n1, err := w.gw.Write(w.buff)
+			if err != nil {
+				return n, err
+			}
+			n += n1
+		}
+
+		// tmpBuff := w.buff
+		w.buff = nil
+
+		if w.gw == nil {
+			w.init()
+		}
+
+		n1, err := w.gw.Write(b)
+		if err != nil {
+			return n, err
+		}
+
+		// fmt.Println("wrote:", string(tmpBuff), string(b))
+
+		n += n1
+		return n, err
+	}
+
+	// if w.buff == nil {
+	// 	w.buff = bytes.NewBuffer(nil)
+	// }
+
+	fmt.Println("TPM")
+
+	w.buff = append(w.buff, b...)
+	fmt.Println("tmpBuff:", string(w.buff))
+	return 0, nil
 }
 
 // WriteHeader will check if the gzip writer needs to be lazily initiated and
 // then pass the code along to the underlying ResponseWriter.
 func (w *GzipResponseWriter) WriteHeader(code int) {
-	if w.gw == nil &&
-		code != http.StatusNotModified && code != http.StatusNoContent {
-		w.init()
-	}
+	fmt.Println("write header")
+	// if w.gw == nil &&
+	// 	code != http.StatusNotModified && code != http.StatusNoContent {
+	// 	w.init()
+	// }
 	w.ResponseWriter.WriteHeader(code)
 }
 
 // init graps a new gzip writer from the gzipWriterPool and writes the correct
 // content encoding header.
 func (w *GzipResponseWriter) init() {
+	fmt.Println("init GzipResponseWriter")
+
 	// Bytes written during ServeHTTP are redirected to this gzip writer
 	// before being written to the underlying response.
 	gzw := gzipWriterPools[w.index].Get().(*gzip.Writer)
 	gzw.Reset(w.ResponseWriter)
 	w.gw = gzw
-	w.ResponseWriter.Header().Set(contentEncoding, "gzip")
+
+	w.Header().Set(contentEncoding, "gzip")
 	// if the Content-Length is already set, then calls to Write on gzip
 	// will fail to set the Content-Length header since its already set
 	// See: https://github.com/golang/go/issues/14975
@@ -133,6 +167,14 @@ func (w *GzipResponseWriter) init() {
 
 // Close will close the gzip.Writer and will put it back in the gzipWriterPool.
 func (w *GzipResponseWriter) Close() error {
+	if w.buff != nil {
+		fmt.Println("close REGULAR:", string(w.buff))
+		w.ResponseWriter.Write(w.buff)
+		return nil
+	}
+
+	fmt.Println("close GZIP")
+
 	if w.gw == nil {
 		return nil
 	}
@@ -203,12 +245,15 @@ func NewGzipLevelAndMinSize(level, askedMinSize int) (func(http.Handler) http.Ha
 			w.Header().Add(vary, acceptEncoding)
 
 			if acceptsGzip(r) {
+				fmt.Println("start gziper:", r.URL.Path)
 				gw := &GzipResponseWriter{
 					ResponseWriter: w,
 					index:          index,
 					minSize:        askedMinSize,
 				}
 				defer gw.Close()
+
+				gw.init()
 
 				h.ServeHTTP(gw, r)
 			} else {

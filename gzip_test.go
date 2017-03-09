@@ -16,7 +16,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const testBody = "aaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbccc"
+const (
+	smallTestBody = "aaabbcaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbccc"
+	testBody      = "aaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbccc"
+)
 
 func TestParseEncodings(t *testing.T) {
 	examples := map[string]codings{
@@ -213,8 +216,6 @@ func TestGzipHandlerContentLength(t *testing.T) {
 }
 
 func TestGzipHandlerMinSize(t *testing.T) {
-	// Run a test with size smaller than the limit
-	b := bytes.NewBufferString("test")
 
 	wrapper, _ := NewGzipLevelAndMinSize(gzip.DefaultCompression, 12)
 	handler := wrapper(http.HandlerFunc(
@@ -223,8 +224,12 @@ func TestGzipHandlerMinSize(t *testing.T) {
 			w.Write(resp)
 			// Call write multiple times to pass through "chosenWriter"
 			w.Write(resp)
+			w.Write(resp)
 		},
 	))
+
+	// Run a test with size smaller than the limit
+	b := bytes.NewBufferString("test")
 
 	req1, _ := http.NewRequest("GET", "/whatever", b)
 	req1.Header.Add("Accept-Encoding", "gzip")
@@ -232,13 +237,14 @@ func TestGzipHandlerMinSize(t *testing.T) {
 	handler.ServeHTTP(resp1, req1)
 	res1 := resp1.Result()
 
+	fmt.Println("res1:", res1.Header.Get(contentEncoding))
 	if res1.Header.Get(contentEncoding) == "gzip" {
 		t.Errorf("The response is compress and should not")
 		return
 	}
 
 	// Run a test with size bigger than the limit
-	b = bytes.NewBufferString(testBody)
+	b = bytes.NewBufferString(smallTestBody)
 
 	req2, _ := http.NewRequest("GET", "/whatever", b)
 	req2.Header.Add("Accept-Encoding", "gzip")
@@ -246,6 +252,7 @@ func TestGzipHandlerMinSize(t *testing.T) {
 	handler.ServeHTTP(resp2, req2)
 	res2 := resp2.Result()
 
+	fmt.Println("res2:", res2.Header.Get(contentEncoding))
 	if res2.Header.Get(contentEncoding) != "gzip" {
 		t.Errorf("The response is not compress and should")
 		return
