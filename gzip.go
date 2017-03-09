@@ -103,9 +103,11 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 		// See: https://github.com/golang/go/issues/14975
 		w.ResponseWriter.Header().Del(contentLength)
 
+		// Write the header and contentEncoding to gzip.
 		w.writeHeader()
 
 		n := 0
+		// If the buffer is not nil, it needs to be empty into the gzip writer.
 		if w.buff != nil {
 			if w.gw == nil {
 				w.init()
@@ -115,7 +117,9 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 			if err != nil {
 				return n, err
 			}
-			n += n1
+
+			// Saved the buffed length.
+			n = n1
 		}
 
 		w.buff = nil
@@ -129,24 +133,23 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 			return n, err
 		}
 
+		// Add the buffered length to the new write length.
 		n += n1
 		return n, err
 	}
 
+	// When arrived here, it's to save the writes into the buffer until it
+	// goes over the minSize or it closes.
 	w.buff = append(w.buff, b...)
 	return 0, nil
 }
 
-// WriteHeader will check if the gzip writer needs to be lazily initiated and
-// then pass the code along to the underlying ResponseWriter.
+// WriteHeader just saves the response code until close or GZIP effective writes.
 func (w *GzipResponseWriter) WriteHeader(code int) {
-	if w.gw == nil &&
-		code != http.StatusNotModified && code != http.StatusNoContent {
-		w.init()
-	}
 	w.code = code
 }
 
+// writeHeader uses the saved code to send it to the ResponseWriter.
 func (w *GzipResponseWriter) writeHeader() {
 	if w.code == 0 {
 		w.code = http.StatusOK
@@ -166,8 +169,8 @@ func (w *GzipResponseWriter) init() {
 
 // Close will close the gzip.Writer and will put it back in the gzipWriterPool.
 func (w *GzipResponseWriter) Close() error {
+	// Buffer not nil means the regular response it returned.
 	if w.buff != nil {
-		w.ResponseWriter.Header().Del(contentEncoding)
 		w.writeHeader()
 		w.ResponseWriter.Write(w.buff)
 		return nil
