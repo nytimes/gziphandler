@@ -151,6 +151,7 @@ func (w *GzipResponseWriter) WriteHeader(code int) {
 
 // writeHeader uses the saved code to send it to the ResponseWriter.
 func (w *GzipResponseWriter) writeHeader() {
+	// debug.PrintStack()
 	if w.code == 0 {
 		w.code = http.StatusOK
 	}
@@ -175,7 +176,6 @@ func (w *GzipResponseWriter) Close() error {
 		w.ResponseWriter.Write(w.buff)
 		return nil
 	}
-	w.writeHeader()
 
 	if w.gw == nil {
 		return nil

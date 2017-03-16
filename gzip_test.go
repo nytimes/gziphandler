@@ -216,7 +216,6 @@ func TestGzipHandlerContentLength(t *testing.T) {
 }
 
 func TestGzipHandlerMinSize(t *testing.T) {
-
 	wrapper, _ := NewGzipLevelAndMinSize(gzip.DefaultCompression, 12)
 	handler := wrapper(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
