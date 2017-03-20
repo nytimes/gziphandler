@@ -87,21 +87,21 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 	// Update the numbers of bytes written.
 	w.bytesWritten += len(b)
 
-	if _, ok := w.ResponseWriter.Header()[contentType]; !ok {
+	if _, ok := w.Header()[contentType]; !ok {
 		// If content type is not set, infer it from the uncompressed body.
-		w.ResponseWriter.Header().Set(contentType, http.DetectContentType(b))
+		w.Header().Set(contentType, http.DetectContentType(b))
 	}
 
 	// If the global write is bigger than the minSize, compression is used.
 	// Otherwise it save the write into a buffer and send it with the regular
 	// ResponseWriter at close.
 	if w.bytesWritten > w.minSize {
-		w.ResponseWriter.Header().Set(contentEncoding, "gzip")
+		w.Header().Set(contentEncoding, "gzip")
 
 		// if the Content-Length is already set, then calls to Write on gzip
 		// will fail to set the Content-Length header since its already set
 		// See: https://github.com/golang/go/issues/14975
-		w.ResponseWriter.Header().Del(contentLength)
+		w.Header().Del(contentLength)
 
 		// Write the header and contentEncoding to gzip.
 		w.writeHeader()
@@ -155,7 +155,7 @@ func (w *GzipResponseWriter) writeHeader() {
 	if w.code == 0 {
 		w.code = http.StatusOK
 	}
-	w.ResponseWriter.WriteHeader(w.code)
+	w.WriteHeader(w.code)
 }
 
 // init graps a new gzip writer from the gzipWriterPool and writes the correct
