@@ -9,8 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSetAcceptEncodingForPushOptionsNil(t *testing.T) {
-
+func TestSetAcceptEncodingForPushOptionsWithoutHeaders(t *testing.T) {
 	var opts *http.PushOptions
 	opts = setAcceptEncodingForPushOptions(opts)
 
@@ -36,7 +35,7 @@ func TestSetAcceptEncodingForPushOptionsNil(t *testing.T) {
 	}
 }
 
-func TestSetAcceptEncodingForPushOptionsNoAcceptEncoding(t *testing.T) {
+func TestSetAcceptEncodingForPushOptionsWithHeaders(t *testing.T) {
 	opts := &http.PushOptions{
 		Header: http.Header{
 			"User-Agent": []string{"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.98 Safari/537.36"},
@@ -49,11 +48,8 @@ func TestSetAcceptEncodingForPushOptionsNoAcceptEncoding(t *testing.T) {
 
 	assert.Equal(t, "gzip", opts.Header.Get("Accept-Encoding"))
 	assert.Equal(t, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.98 Safari/537.36", opts.Header.Get("User-Agent"))
-}
 
-func TestSetAcceptEncodingForPushOptionsWithAcceptEncoding(t *testing.T) {
-
-	opts := &http.PushOptions{
+	opts = &http.PushOptions{
 		Header: http.Header{
 			"User-Agent":   []string{"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.98 Safari/537.36"},
 			acceptEncoding: []string{"deflate"},
