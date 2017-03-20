@@ -9,7 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSetAcceptEncodingForPushOptionsNilOpts(t *testing.T) {
+func TestSetAcceptEncodingForPushOptionsNil(t *testing.T) {
+
 	var opts *http.PushOptions
 	opts = setAcceptEncodingForPushOptions(opts)
 
@@ -21,10 +22,8 @@ func TestSetAcceptEncodingForPushOptionsNilOpts(t *testing.T) {
 		assert.Len(t, v, 1)
 		assert.Equal(t, "gzip", v[0])
 	}
-}
 
-func TestSetAcceptEncodingForPushOptionsNilHeader(t *testing.T) {
-	opts := &http.PushOptions{}
+	opts = &http.PushOptions{}
 	opts = setAcceptEncodingForPushOptions(opts)
 
 	assert.NotNil(t, opts)
