@@ -134,8 +134,8 @@ func TestGzipHandlerNoBody(t *testing.T) {
 		// Body must be empty.
 		{http.StatusNoContent, "", 0},
 		{http.StatusNotModified, "", 0},
-		// // Body is going to get gzip'd no matter what.
-		// {http.StatusOK, "gzip", 23},
+		// Body is going to get gzip'd no matter what.
+		{http.StatusOK, "", 0},
 	}
 
 	for num, test := range tests {

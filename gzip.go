@@ -77,71 +77,63 @@ type GzipResponseWriter struct {
 
 	code int // Saves the WriteHeader value.
 
-	minSize      int    // Specifed the minimum response size to gzip. Only the first Write call is checked.
-	buff         []byte // Holds the first part of the write before the reaching the minSize or the end of the write.
+	minSize      int    // Specifed the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
+	buf          []byte // Holds the first part of the write before reaching the minSize or the end of the write.
 	bytesWritten int    // Keep trace of the numbers of bytes written.
 }
 
 // Write appends data to the gzip writer.
 func (w *GzipResponseWriter) Write(b []byte) (int, error) {
-	// Update the numbers of bytes written.
-	w.bytesWritten += len(b)
-
+	// If content type is not set.
 	if _, ok := w.Header()[contentType]; !ok {
-		// If content type is not set, infer it from the uncompressed body.
+		// It infer it from the uncompressed body.
 		w.Header().Set(contentType, http.DetectContentType(b))
 	}
 
-	// If the global write is bigger than the minSize, compression is used.
-	// Otherwise it save the write into a buffer and send it with the regular
-	// ResponseWriter at close.
-	if w.bytesWritten > w.minSize {
-		w.Header().Set(contentEncoding, "gzip")
+	// GZIP responseWriter is initialized. Use the GZIP responseWriter.
+	if w.gw != nil {
+		n, err := w.gw.Write(b)
 
-		// if the Content-Length is already set, then calls to Write on gzip
-		// will fail to set the Content-Length header since its already set
-		// See: https://github.com/golang/go/issues/14975
-		w.Header().Del(contentLength)
+		// Update the numbers of bytes written.
+		w.bytesWritten += n
 
-		// Write the header and contentEncoding to gzip.
-		w.writeHeader()
-
-		n := 0
-		// If the buffer is not nil, it needs to be empty into the gzip writer.
-		if w.buff != nil {
-			if w.gw == nil {
-				w.init()
-			}
-
-			n1, err := w.gw.Write(w.buff)
-			if err != nil {
-				return n, err
-			}
-
-			// Saved the buffed length.
-			n = n1
-		}
-
-		w.buff = nil
-
-		if w.gw == nil {
-			w.init()
-		}
-
-		n1, err := w.gw.Write(b)
-		if err != nil {
-			return n, err
-		}
-
-		// Add the buffered length to the new write length.
-		n += n1
 		return n, err
 	}
 
-	// When arrived here, it's to save the writes into the buffer until it
-	// goes over the minSize or it closes.
-	w.buff = append(w.buff, b...)
+	// Save the write into a buffer for later use in GZIP responseWriter (if content is long enough) or at close with regular responseWriter.
+	w.buf = append(w.buf, b...)
+
+	// If the global writes are bigger than the minSize, compression is enable.
+	if w.bytesWritten+len(b) > w.minSize {
+		return w.startGzip()
+	}
+
 	return 0, nil
+}
+
+// startGzip initialize any GZIP specific informations.
+func (w *GzipResponseWriter) startGzip() (int, error) {
+	// Set the GZIP header.
+	w.Header().Set(contentEncoding, "gzip")
+
+	// if the Content-Length is already set, then calls to Write on gzip
+	// will fail to set the Content-Length header since its already set
+	// See: https://github.com/golang/go/issues/14975.
+	w.Header().Del(contentLength)
+
+	// Write the header to gzip response.
+	w.writeHeader()
+
+	// Initialize the GZIP response.
+	w.init()
+
+	// Flush the buffer into the gzip reponse.
+	n, err := w.gw.Write(w.buf)
+	// Empty the buffer.
+	w.buf = nil
+
+	// Return the numbers of bytes writen and the error if any.
+	return n, err
 }
 
 // WriteHeader just saves the response code until close or GZIP effective writes.
@@ -151,7 +143,6 @@ func (w *GzipResponseWriter) WriteHeader(code int) {
 
 // writeHeader uses the saved code to send it to the ResponseWriter.
 func (w *GzipResponseWriter) writeHeader() {
-	// debug.PrintStack()
 	if w.code == 0 {
 		w.code = http.StatusOK
 	}
@@ -170,13 +161,18 @@ func (w *GzipResponseWriter) init() {
 
 // Close will close the gzip.Writer and will put it back in the gzipWriterPool.
 func (w *GzipResponseWriter) Close() error {
-	// Buffer not nil means the regular response it returned.
-	if w.buff != nil {
+	// Buffer not nil means the regular response must be returned.
+	if w.buf != nil {
 		w.writeHeader()
-		w.ResponseWriter.Write(w.buff)
-		return nil
+		// Make the write into the regular response.
+		_, writeErr := w.ResponseWriter.Write(w.buf)
+		// Returns the error if any at write.
+		if writeErr != nil {
+			return fmt.Errorf("gziphandler: write to regular responseWriter at close gets error: %q", writeErr.Error())
+		}
 	}
 
+	// If the GZIP responseWriter is not set no needs to close it.
 	if w.gw == nil {
 		return nil
 	}
@@ -234,11 +230,11 @@ func NewGzipLevelHandler(level int) (func(http.Handler) http.Handler, error) {
 
 // NewGzipLevelAndMinSize behave as NewGzipLevelHandler except it let the caller
 // specify the minimum size before compression.
-func NewGzipLevelAndMinSize(level, askedMinSize int) (func(http.Handler) http.Handler, error) {
+func NewGzipLevelAndMinSize(level, minSize int) (func(http.Handler) http.Handler, error) {
 	if level != gzip.DefaultCompression && (level < gzip.BestSpeed || level > gzip.BestCompression) {
 		return nil, fmt.Errorf("invalid compression level requested: %d", level)
 	}
-	if askedMinSize < 0 {
+	if minSize < 0 {
 		return nil, fmt.Errorf("minimum size must be more than zero")
 	}
 	return func(h http.Handler) http.Handler {
@@ -251,9 +247,9 @@ func NewGzipLevelAndMinSize(level, askedMinSize int) (func(http.Handler) http.Ha
 				gw := &GzipResponseWriter{
 					ResponseWriter: w,
 					index:          index,
-					minSize:        askedMinSize,
+					minSize:        minSize,
 
-					buff: []byte{},
+					buf: []byte{},
 				}
 				defer gw.Close()
 
