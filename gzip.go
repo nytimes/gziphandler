@@ -146,7 +146,7 @@ func (w *GzipResponseWriter) writeHeader() {
 	if w.code == 0 {
 		w.code = http.StatusOK
 	}
-	w.WriteHeader(w.code)
+	w.ResponseWriter.WriteHeader(w.code)
 }
 
 // init graps a new gzip writer from the gzipWriterPool and writes the correct
