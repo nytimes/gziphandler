@@ -287,6 +287,19 @@ func TestGzipDoubleClose(t *testing.T) {
 	assert.False(t, w1 == w2)
 }
 
+func TestStatusCodes(t *testing.T) {
+	handler := GzipHandler(http.NotFoundHandler())
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Set("Accept-Encoding", "gzip")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	result := w.Result()
+	if result.StatusCode != 404 {
+		t.Errorf("StatusCode should have been 404 but was %d", result.StatusCode)
+	}
+}
+
 // --------------------------------------------------------------------
 
 func BenchmarkGzipHandler_S2k(b *testing.B)   { benchmark(b, false, 2048) }
