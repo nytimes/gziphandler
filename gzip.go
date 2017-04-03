@@ -108,7 +108,7 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 		return w.startGzip()
 	}
 
-	return 0, nil
+	return len(b), nil
 }
 
 // startGzip initialize any GZIP specific informations.
