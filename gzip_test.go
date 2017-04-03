@@ -215,50 +215,45 @@ func TestGzipHandlerContentLength(t *testing.T) {
 	assert.NotEqual(t, b, body)
 }
 
+func TestGzipHandlerMinSizeMustBePositive(t *testing.T) {
+	_, err := NewGzipLevelAndMinSize(gzip.DefaultCompression, -1)
+	assert.Error(t, err)
+}
+
 func TestGzipHandlerMinSize(t *testing.T) {
-	wrapper, _ := NewGzipLevelAndMinSize(gzip.DefaultCompression, 12)
+	responseLength := 0
+	b := []byte{'x'}
+
+	wrapper, _ := NewGzipLevelAndMinSize(gzip.DefaultCompression, 128)
 	handler := wrapper(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			resp, _ := ioutil.ReadAll(r.Body)
-			w.Write(resp)
-			// Call write multiple times to pass through "chosenWriter"
-			w.Write(resp)
-			w.Write(resp)
+			// Write responses one byte at a time to ensure that the flush
+			// mechanism, if used, is working properly.
+			for i := 0; i < responseLength; i++ {
+				n, err := w.Write(b)
+				assert.Equal(t, 1, n)
+				assert.Nil(t, err)
+			}
 		},
 	))
 
-	// Run a test with size smaller than the limit
-	b := bytes.NewBufferString("test")
+	r, _ := http.NewRequest("GET", "/whatever", &bytes.Buffer{})
+	r.Header.Add("Accept-Encoding", "gzip")
 
-	req1, _ := http.NewRequest("GET", "/whatever", b)
-	req1.Header.Add("Accept-Encoding", "gzip")
-	resp1 := httptest.NewRecorder()
-	handler.ServeHTTP(resp1, req1)
-	res1 := resp1.Result()
-
-	if res1.Header.Get(contentEncoding) == "gzip" {
-		t.Errorf("The response is compress and should not")
-		return
+	// Short response is not compressed
+	responseLength = 127
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Result().Header.Get(contentEncoding) == "gzip" {
+		t.Error("Expected uncompressed response, got compressed")
 	}
 
-	// Run a test with size bigger than the limit
-	b = bytes.NewBufferString(smallTestBody)
-
-	req2, _ := http.NewRequest("GET", "/whatever", b)
-	req2.Header.Add("Accept-Encoding", "gzip")
-	resp2 := httptest.NewRecorder()
-	handler.ServeHTTP(resp2, req2)
-	res2 := resp2.Result()
-
-	if res2.Header.Get(contentEncoding) != "gzip" {
-		t.Errorf("The response is not compress and should")
-		return
-	}
-
-	_, errorMinNegative := NewGzipLevelAndMinSize(gzip.DefaultCompression, -10)
-	if errorMinNegative == nil {
-		t.Error("The minimum size it negative and the function returns no error")
-		return
+	// Long response is not compressed
+	responseLength = 128
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Result().Header.Get(contentEncoding) != "gzip" {
+		t.Error("Expected compressed response, got uncompressed")
 	}
 }
 

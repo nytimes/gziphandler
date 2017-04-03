@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -77,9 +78,8 @@ type GzipResponseWriter struct {
 
 	code int // Saves the WriteHeader value.
 
-	minSize      int    // Specifed the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
-	buf          []byte // Holds the first part of the write before reaching the minSize or the end of the write.
-	bytesWritten int    // Keep trace of the numbers of bytes written.
+	minSize int    // Specifed the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
+	buf     []byte // Holds the first part of the write before reaching the minSize or the end of the write.
 }
 
 // Write appends data to the gzip writer.
@@ -93,10 +93,6 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 	// GZIP responseWriter is initialized. Use the GZIP responseWriter.
 	if w.gw != nil {
 		n, err := w.gw.Write(b)
-
-		// Update the numbers of bytes written.
-		w.bytesWritten += n
-
 		return n, err
 	}
 
@@ -104,15 +100,19 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 	w.buf = append(w.buf, b...)
 
 	// If the global writes are bigger than the minSize, compression is enable.
-	if w.bytesWritten+len(b) > w.minSize {
-		return w.startGzip()
+	if len(w.buf) >= w.minSize {
+		err := w.startGzip()
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	return len(b), nil
 }
 
 // startGzip initialize any GZIP specific informations.
-func (w *GzipResponseWriter) startGzip() (int, error) {
+func (w *GzipResponseWriter) startGzip() error {
+
 	// Set the GZIP header.
 	w.Header().Set(contentEncoding, "gzip")
 
@@ -129,11 +129,16 @@ func (w *GzipResponseWriter) startGzip() (int, error) {
 
 	// Flush the buffer into the gzip reponse.
 	n, err := w.gw.Write(w.buf)
-	// Empty the buffer.
-	w.buf = nil
 
-	// Return the numbers of bytes writen and the error if any.
-	return n, err
+	// This should never happen (per io.Writer docs), but if the write didn't
+	// accept the entire buffer but returned no specific error, we have no clue
+	// what's going on, so abort just to be safe.
+	if err == nil && n < len(w.buf) {
+		return io.ErrShortWrite
+	}
+
+	w.buf = nil
+	return err
 }
 
 // WriteHeader just saves the response code until close or GZIP effective writes.
