@@ -82,8 +82,18 @@ type GzipResponseWriter struct {
 	buf     []byte // Holds the first part of the write before reaching the minSize or the end of the write.
 }
 
+// Content-Encoding header is set but not by us, we assume body is already
+// compressed somewhere else and skip gzip entirely
+func (w *GzipResponseWriter) ShouldPassthrough() bool {
+	return w.gw == nil && w.Header().Get(contentEncoding) != ""
+}
+
 // Write appends data to the gzip writer.
 func (w *GzipResponseWriter) Write(b []byte) (int, error) {
+	if w.ShouldPassthrough() {
+		return w.ResponseWriter.Write(b)
+	}
+
 	// If content type is not set.
 	if _, ok := w.Header()[contentType]; !ok {
 		// It infer it from the uncompressed body.
@@ -166,6 +176,10 @@ func (w *GzipResponseWriter) init() {
 
 // Close will close the gzip.Writer and will put it back in the gzipWriterPool.
 func (w *GzipResponseWriter) Close() error {
+	if w.ShouldPassthrough() {
+		return nil
+	}
+
 	// Buffer not nil means the regular response must be returned.
 	if w.buf != nil {
 		w.writeHeader()

@@ -295,6 +295,45 @@ func TestStatusCodes(t *testing.T) {
 	}
 }
 
+func TestGzipDoubleCompress(t *testing.T) {
+	b := []byte(testBody)
+	handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+		w.Header().Set("Content-Encoding", "already-encoded")
+		w.Write(b)
+	}))
+	ln, err := net.Listen("tcp", "127.0.0.1:")
+	if err != nil {
+		t.Fatalf("failed creating listen socket: %v", err)
+	}
+	defer ln.Close()
+	srv := &http.Server{
+		Handler: handler,
+	}
+	go srv.Serve(ln)
+
+	req := &http.Request{
+		Method: "GET",
+		URL:    &url.URL{Path: "/", Scheme: "http", Host: ln.Addr().String()},
+		Header: make(http.Header),
+		Close:  true,
+	}
+	req.Header.Set("Accept-Encoding", "gzip")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Unexpected error making http request: %v", err)
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("Unexpected error reading response body: %v", err)
+	}
+
+	assert.Equal(t, body, b)
+	assert.Equal(t, "already-encoded", res.Header.Get("Content-Encoding"))
+}
+
 // --------------------------------------------------------------------
 
 func BenchmarkGzipHandler_S2k(b *testing.B)   { benchmark(b, false, 2048) }
