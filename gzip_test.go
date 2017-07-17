@@ -106,12 +106,46 @@ func TestNewGzipLevelHandler(t *testing.T) {
 	}
 }
 
+func TestNewGzipHandler(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, testBody)
+	})
+
+	for lvl := gzip.BestSpeed; lvl <= gzip.BestCompression; lvl++ {
+		wrapper, err := NewGzipHandler(CompressionLevel(lvl), MinSizeDefault)
+		if !assert.Nil(t, err, "NewGzipLevleHandler returned error for level:", lvl) {
+			continue
+		}
+
+		req, _ := http.NewRequest("GET", "/whatever", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		resp := httptest.NewRecorder()
+		wrapper(handler).ServeHTTP(resp, req)
+		res := resp.Result()
+
+		assert.Equal(t, 200, res.StatusCode)
+		assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+		assert.Equal(t, gzipStrLevel(testBody, lvl), resp.Body.Bytes())
+	}
+}
+
 func TestNewGzipLevelHandlerReturnsErrorForInvalidLevels(t *testing.T) {
 	var err error
 	_, err = NewGzipLevelHandler(-42)
 	assert.NotNil(t, err)
 
 	_, err = NewGzipLevelHandler(42)
+	assert.NotNil(t, err)
+}
+
+func TestNewGzipHandlerReturnsErrorForInvalidLevels(t *testing.T) {
+	var err error
+	_, err = NewGzipHandler(MinSizeDefault, CompressionLevel(-42))
+	assert.NotNil(t, err)
+
+	_, err = NewGzipHandler(MinSizeDefault, CompressionLevel(42))
 	assert.NotNil(t, err)
 }
 
@@ -123,6 +157,16 @@ func TestMustNewGzipLevelHandlerWillPanic(t *testing.T) {
 	}()
 
 	_ = MustNewGzipLevelHandler(-42)
+}
+
+func TestMustNewGzipHandlerWillPanic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("panic was not called")
+		}
+	}()
+
+	_ = MustNewGzipHandler(MinSizeDefault, CompressionLevel(-42))
 }
 
 func TestGzipHandlerNoBody(t *testing.T) {
@@ -220,11 +264,53 @@ func TestGzipHandlerMinSizeMustBePositive(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestNewGzipHandlerMinSizeMustBePositive(t *testing.T) {
+	_, err := NewGzipHandler(CompressionLevelDefault, MinSize(-1))
+	assert.Error(t, err)
+}
+
 func TestGzipHandlerMinSize(t *testing.T) {
 	responseLength := 0
 	b := []byte{'x'}
 
 	wrapper, _ := NewGzipLevelAndMinSize(gzip.DefaultCompression, 128)
+	handler := wrapper(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			// Write responses one byte at a time to ensure that the flush
+			// mechanism, if used, is working properly.
+			for i := 0; i < responseLength; i++ {
+				n, err := w.Write(b)
+				assert.Equal(t, 1, n)
+				assert.Nil(t, err)
+			}
+		},
+	))
+
+	r, _ := http.NewRequest("GET", "/whatever", &bytes.Buffer{})
+	r.Header.Add("Accept-Encoding", "gzip")
+
+	// Short response is not compressed
+	responseLength = 127
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Result().Header.Get(contentEncoding) == "gzip" {
+		t.Error("Expected uncompressed response, got compressed")
+	}
+
+	// Long response is not compressed
+	responseLength = 128
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Result().Header.Get(contentEncoding) != "gzip" {
+		t.Error("Expected compressed response, got uncompressed")
+	}
+}
+
+func TestGzipHandlerWithMinSize(t *testing.T) {
+	responseLength := 0
+	b := []byte{'x'}
+
+	wrapper, _ := NewGzipHandler(CompressionLevelDefault, MinSize(128))
 	handler := wrapper(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			// Write responses one byte at a time to ensure that the flush
