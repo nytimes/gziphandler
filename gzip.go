@@ -81,7 +81,7 @@ type GzipResponseWriter struct {
 	minSize int    // Specifed the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
 	buf     []byte // Holds the first part of the write before reaching the minSize or the end of the write.
 
-	contentTypes []string // Only compress if the response is one of these content-types. All are accepted it empty.
+	contentTypes []string // Only compress if the response is one of these content-types. All are accepted if empty.
 }
 
 // Write appends data to the gzip writer.
@@ -237,8 +237,8 @@ func NewGzipLevelAndMinSize(level, minSize int) (func(http.Handler) http.Handler
 	return GzipHandlerWithOpts(CompressionLevel(level), MinSize(minSize))
 }
 
-func GzipHandlerWithOpts(opts ...GzipOpt) (func(http.Handler) http.Handler, error) {
-	c := &GzipConfig{
+func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error) {
+	c := &config{
 		level:   gzip.DefaultCompression,
 		minSize: DefaultMinSize,
 	}
@@ -247,7 +247,7 @@ func GzipHandlerWithOpts(opts ...GzipOpt) (func(http.Handler) http.Handler, erro
 		o(c)
 	}
 
-	if err := c.Validate(); err != nil {
+	if err := c.validate(); err != nil {
 		return nil, err
 	}
 
@@ -275,13 +275,13 @@ func GzipHandlerWithOpts(opts ...GzipOpt) (func(http.Handler) http.Handler, erro
 }
 
 // Used for functional configuration.
-type GzipConfig struct {
+type config struct {
 	minSize      int
 	level        int
 	contentTypes []string
 }
 
-func (c *GzipConfig) Validate() error {
+func (c *config) validate() error {
 	if c.level != gzip.DefaultCompression && (c.level < gzip.BestSpeed || c.level > gzip.BestCompression) {
 		return fmt.Errorf("invalid compression level requested: %d", c.level)
 	}
@@ -293,23 +293,26 @@ func (c *GzipConfig) Validate() error {
 	return nil
 }
 
-type GzipOpt func(c *GzipConfig)
+type option func(c *config)
 
-func MinSize(size int) GzipOpt {
-	return func(c *GzipConfig) {
+func MinSize(size int) option {
+	return func(c *config) {
 		c.minSize = size
 	}
 }
 
-func CompressionLevel(level int) GzipOpt {
-	return func(c *GzipConfig) {
+func CompressionLevel(level int) option {
+	return func(c *config) {
 		c.level = level
 	}
 }
 
-func ContentTypes(types []string) GzipOpt {
-	return func(c *GzipConfig) {
-		c.contentTypes = types
+func ContentTypes(types []string) option {
+	return func(c *config) {
+		c.contentTypes = []string{}
+		for _, v := range types {
+			c.contentTypes = append(c.contentTypes, strings.ToLower(v))
+		}
 	}
 }
 
@@ -336,7 +339,7 @@ func handleContentType(contentTypes []string, w http.ResponseWriter) bool {
 	}
 
 	for _, c := range contentTypes {
-		if strings.ToLower(c) == strings.ToLower(w.Header().Get(contentType)) {
+		if c == strings.ToLower(w.Header().Get(contentType)) {
 			return true
 		}
 	}
