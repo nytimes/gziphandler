@@ -338,8 +338,9 @@ func handleContentType(contentTypes []string, w http.ResponseWriter) bool {
 		return true
 	}
 
+	ct := strings.ToLower(w.Header().Get(contentType))
 	for _, c := range contentTypes {
-		if c == strings.ToLower(w.Header().Get(contentType)) {
+		if c == ct {
 			return true
 		}
 	}
