@@ -134,7 +134,7 @@ func (w *GzipResponseWriter) startGzip() error {
 	// Initialize the GZIP response.
 	w.init()
 
-	// Flush the buffer into the gzip reponse.
+	// Flush the buffer into the gzip response.
 	n, err := w.gw.Write(w.buf)
 
 	// This should never happen (per io.Writer docs), but if the write didn't
