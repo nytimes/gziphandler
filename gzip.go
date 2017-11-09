@@ -151,7 +151,9 @@ func (w *GzipResponseWriter) startGzip() error {
 
 // WriteHeader just saves the response code until close or GZIP effective writes.
 func (w *GzipResponseWriter) WriteHeader(code int) {
-	w.code = code
+	if w.code == 0 {
+		w.code = code
+	}
 }
 
 // init graps a new gzip writer from the gzipWriterPool and writes the correct
