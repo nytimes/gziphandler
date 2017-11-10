@@ -306,6 +306,24 @@ func TestStatusCodes(t *testing.T) {
 	}
 }
 
+func TestFlushBeforeWrite(t *testing.T) {
+	b := []byte(testBody)
+	handler := GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusNotFound)
+		rw.(http.Flusher).Flush()
+		rw.Write(b)
+	}))
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("Accept-Encoding", "gzip")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	res := w.Result()
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+	assert.NotEqual(t, b, w.Body.Bytes())
+}
+
 func TestIgnoreSubsequentWriteHeader(t *testing.T) {
 	handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
