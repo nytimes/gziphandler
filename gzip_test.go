@@ -324,6 +324,40 @@ func TestFlushBeforeWrite(t *testing.T) {
 	assert.NotEqual(t, b, w.Body.Bytes())
 }
 
+func TestImplementCloseNotifier(t *testing.T) {
+	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request){
+		_, ok := rw.(http.CloseNotifier)
+		assert.True(t, ok, "response writer must implement http.CloseNotifier")
+	})).ServeHTTP(&mockRWCloseNotify{}, &http.Request{})
+}
+
+func TestNotImplementCloseNotifier(t *testing.T) {
+	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request){
+		_, ok := rw.(http.CloseNotifier)
+		assert.False(t, ok, "response writer must not implement http.CloseNotifier")
+	})).ServeHTTP(httptest.NewRecorder(), &http.Request{})
+}
+
+
+type mockRWCloseNotify struct{}
+
+func (m *mockRWCloseNotify) CloseNotify() <-chan bool {
+	panic("implement me")
+}
+
+func (m *mockRWCloseNotify) Header() http.Header {
+	return http.Header{}
+}
+
+func (m *mockRWCloseNotify) Write([]byte) (int, error) {
+	panic("implement me")
+}
+
+func (m *mockRWCloseNotify) WriteHeader(int) {
+	panic("implement me")
+}
+
+
 func TestIgnoreSubsequentWriteHeader(t *testing.T) {
 	handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
