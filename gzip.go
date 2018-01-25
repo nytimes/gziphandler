@@ -88,7 +88,7 @@ type GzipResponseWriterWithCloseNotify struct {
 	*GzipResponseWriter
 }
 
-func (w *GzipResponseWriterWithCloseNotify) CloseNotify() <-chan bool {
+func (w GzipResponseWriterWithCloseNotify) CloseNotify() <-chan bool {
 	return w.ResponseWriter.(http.CloseNotifier).CloseNotify()
 }
 
@@ -282,7 +282,7 @@ func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error
 				defer gw.Close()
 
 				if _, ok := w.(http.CloseNotifier); ok {
-					gwcn := &GzipResponseWriterWithCloseNotify{gw}
+					gwcn := GzipResponseWriterWithCloseNotify{gw}
 					h.ServeHTTP(gwcn, r)
 				} else {
 					h.ServeHTTP(gw, r)
