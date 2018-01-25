@@ -325,8 +325,7 @@ func TestFlushBeforeWrite(t *testing.T) {
 }
 
 func TestImplementCloseNotifier(t *testing.T) {
-	request := &http.Request{}
-	request.Header = http.Header{}
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
 	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request){
 		_, ok := rw.(http.CloseNotifier)
@@ -335,8 +334,7 @@ func TestImplementCloseNotifier(t *testing.T) {
 }
 
 func TestImplementFlusherAndCloseNotifier(t *testing.T) {
-	request := &http.Request{}
-	request.Header = http.Header{}
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
 	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request){
 		_, okCloseNotifier := rw.(http.CloseNotifier)
@@ -347,8 +345,7 @@ func TestImplementFlusherAndCloseNotifier(t *testing.T) {
 }
 
 func TestNotImplementCloseNotifier(t *testing.T) {
-	request := &http.Request{}
-	request.Header = http.Header{}
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
 	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request){
 		_, ok := rw.(http.CloseNotifier)
