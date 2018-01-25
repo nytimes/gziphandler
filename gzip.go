@@ -282,7 +282,7 @@ func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error
 				defer gw.Close()
 
 				if _, ok := w.(http.CloseNotifier); ok {
-					gwcn := GzipResponseWriterWithCloseNotify{gw}
+					gwcn := &GzipResponseWriterWithCloseNotify{gw}
 					h.ServeHTTP(gwcn, r)
 				} else {
 					h.ServeHTTP(gw, r)
