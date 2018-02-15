@@ -255,8 +255,9 @@ func NewGzipLevelAndMinSize(level, minSize int) (func(http.Handler) http.Handler
 
 func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error) {
 	c := &config{
-		level:   gzip.DefaultCompression,
-		minSize: DefaultMinSize,
+		level:       gzip.DefaultCompression,
+		minSize:     DefaultMinSize,
+		acceptsGzip: acceptsGzip,
 	}
 
 	for _, o := range opts {
@@ -272,7 +273,7 @@ func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(vary, acceptEncoding)
-			if acceptsGzip(r) {
+			if c.acceptsGzip(r) {
 				gw := &GzipResponseWriter{
 					ResponseWriter: w,
 					index:          index,
@@ -300,6 +301,7 @@ type config struct {
 	minSize      int
 	level        int
 	contentTypes []string
+	acceptsGzip  func(*http.Request) bool
 }
 
 func (c *config) validate() error {
@@ -315,6 +317,12 @@ func (c *config) validate() error {
 }
 
 type option func(c *config)
+
+func AcceptGzip(accept func(*http.Request) bool) option {
+	return func(c *config) {
+		c.acceptsGzip = accept
+	}
+}
 
 func MinSize(size int) option {
 	return func(c *config) {
