@@ -345,7 +345,7 @@ func TestFlushBeforeWrite(t *testing.T) {
 func TestImplementCloseNotifier(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
-	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request){
+	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		_, ok := rw.(http.CloseNotifier)
 		assert.True(t, ok, "response writer must implement http.CloseNotifier")
 	})).ServeHTTP(&mockRWCloseNotify{}, request)
@@ -354,7 +354,7 @@ func TestImplementCloseNotifier(t *testing.T) {
 func TestImplementFlusherAndCloseNotifier(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
-	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request){
+	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		_, okCloseNotifier := rw.(http.CloseNotifier)
 		assert.True(t, okCloseNotifier, "response writer must implement http.CloseNotifier")
 		_, okFlusher := rw.(http.Flusher)
@@ -365,12 +365,11 @@ func TestImplementFlusherAndCloseNotifier(t *testing.T) {
 func TestNotImplementCloseNotifier(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
-	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request){
+	GzipHandler(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		_, ok := rw.(http.CloseNotifier)
 		assert.False(t, ok, "response writer must not implement http.CloseNotifier")
 	})).ServeHTTP(httptest.NewRecorder(), request)
 }
-
 
 type mockRWCloseNotify struct{}
 
@@ -389,7 +388,6 @@ func (m *mockRWCloseNotify) Write([]byte) (int, error) {
 func (m *mockRWCloseNotify) WriteHeader(int) {
 	panic("implement me")
 }
-
 
 func TestIgnoreSubsequentWriteHeader(t *testing.T) {
 	handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -444,22 +442,52 @@ var contentTypeTests = []struct {
 		expectedGzip:         true,
 	},
 	{
-		name:                 "Exact content-type match",
+		name:                 "MIME match",
 		contentType:          "application/json",
 		acceptedContentTypes: []string{"application/json"},
 		expectedGzip:         true,
 	},
 	{
-		name:                 "Case insensitive content-type matching",
+		name:                 "MIME no match",
+		contentType:          "text/xml",
+		acceptedContentTypes: []string{"application/json"},
+		expectedGzip:         false,
+	},
+	{
+		name:                 "MIME match with no other directive ignores non-MIME directives",
+		contentType:          "application/json; charset=utf-8",
+		acceptedContentTypes: []string{"application/json"},
+		expectedGzip:         true,
+	},
+	{
+		name:                 "MIME match with other directives requires all directives be equal, different charset",
+		contentType:          "application/json; charset=ascii",
+		acceptedContentTypes: []string{"application/json; charset=utf-8"},
+		expectedGzip:         false,
+	},
+	{
+		name:                 "MIME match with other directives requires all directives be equal, same charset",
+		contentType:          "application/json; charset=utf-8",
+		acceptedContentTypes: []string{"application/json; charset=utf-8"},
+		expectedGzip:         true,
+	},
+	{
+		name:                 "MIME match with other directives requires all directives be equal, missing charset",
+		contentType:          "application/json",
+		acceptedContentTypes: []string{"application/json; charset=ascii"},
+		expectedGzip:         false,
+	},
+	{
+		name:                 "MIME match case insensitive",
 		contentType:          "Application/Json",
 		acceptedContentTypes: []string{"application/json"},
 		expectedGzip:         true,
 	},
 	{
-		name:                 "Non-matching content-type",
-		contentType:          "text/xml",
-		acceptedContentTypes: []string{"application/json"},
-		expectedGzip:         false,
+		name:                 "MIME match ignore whitespace",
+		contentType:          "application/json;charset=utf-8",
+		acceptedContentTypes: []string{"application/json;            charset=utf-8"},
+		expectedGzip:         true,
 	},
 }
 
