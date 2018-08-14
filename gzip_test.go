@@ -25,9 +25,9 @@ func TestParseEncodings(t *testing.T) {
 	examples := map[string]codings{
 
 		// Examples from RFC 2616
-		"compress, gzip": {"compress": 1.0, "gzip": 1.0},
-		"":               {},
-		"*":              {"*": 1.0},
+		"compress, gzip":                     {"compress": 1.0, "gzip": 1.0},
+		"":                                   {},
+		"*":                                  {"*": 1.0},
 		"compress;q=0.5, gzip;q=1.0":         {"compress": 0.5, "gzip": 1.0},
 		"gzip;q=1.0, identity; q=0.5, *;q=0": {"gzip": 1.0, "identity": 0.5, "*": 0.0},
 
@@ -158,18 +158,23 @@ func TestGzipHandlerNoBody(t *testing.T) {
 	tests := []struct {
 		statusCode      int
 		contentEncoding string
-		bodyLen         int
+		emptyBody       bool
+		body            []byte
 	}{
 		// Body must be empty.
-		{http.StatusNoContent, "", 0},
-		{http.StatusNotModified, "", 0},
+		{http.StatusNoContent, "", true, nil},
+		{http.StatusNotModified, "", true, nil},
 		// Body is going to get gzip'd no matter what.
-		{http.StatusOK, "", 0},
+		{http.StatusOK, "", true, []byte{}},
+		{http.StatusOK, "gzip", false, []byte(testBody)},
 	}
 
 	for num, test := range tests {
 		handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(test.statusCode)
+			if test.body != nil {
+				w.Write(test.body)
+			}
 		}))
 
 		rec := httptest.NewRecorder()
@@ -194,16 +199,31 @@ func TestGzipHandlerNoBody(t *testing.T) {
 		header := rec.Header()
 		assert.Equal(t, test.contentEncoding, header.Get("Content-Encoding"), fmt.Sprintf("for test iteration %d", num))
 		assert.Equal(t, "Accept-Encoding", header.Get("Vary"), fmt.Sprintf("for test iteration %d", num))
-		assert.Equal(t, test.bodyLen, len(body), fmt.Sprintf("for test iteration %d", num))
+		if test.emptyBody {
+			assert.Empty(t, body, fmt.Sprintf("for test iteration %d", num))
+		} else {
+			assert.NotEmpty(t, body, fmt.Sprintf("for test iteration %d", num))
+			assert.NotEqual(t, test.body, body, fmt.Sprintf("for test iteration %d", num))
+		}
 	}
 }
 
 func TestGzipHandlerContentLength(t *testing.T) {
-	b := []byte(testBody)
-	handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Length", strconv.Itoa(len(b)))
-		w.Write(b)
-	}))
+	testBodyBytes := []byte(testBody)
+	tests := []struct {
+		bodyLen   int
+		bodies    [][]byte
+		emptyBody bool
+	}{
+		{len(testBody), [][]byte{testBodyBytes}, false},
+		// each of these writes is less than the DefaultMinSize
+		{len(testBody), [][]byte{testBodyBytes[:200], testBodyBytes[200:]}, false},
+		// without a defined Content-Length it should still gzip
+		{0, [][]byte{testBodyBytes[:200], testBodyBytes[200:]}, false},
+		// simulate a HEAD request with an empty write (to populate headers)
+		{len(testBody), [][]byte{nil}, true},
+	}
+
 	// httptest.NewRecorder doesn't give you access to the Content-Length
 	// header so instead, we create a server on a random port and make
 	// a request to that instead
@@ -213,35 +233,50 @@ func TestGzipHandlerContentLength(t *testing.T) {
 	}
 	defer ln.Close()
 	srv := &http.Server{
-		Handler: handler,
+		Handler: nil,
 	}
 	go srv.Serve(ln)
 
-	req := &http.Request{
-		Method: "GET",
-		URL:    &url.URL{Path: "/", Scheme: "http", Host: ln.Addr().String()},
-		Header: make(http.Header),
-		Close:  true,
-	}
-	req.Header.Set("Accept-Encoding", "gzip")
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("Unexpected error making http request: %v", err)
-	}
-	defer res.Body.Close()
+	for num, test := range tests {
+		srv.Handler = GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if test.bodyLen > 0 {
+				w.Header().Set("Content-Length", strconv.Itoa(test.bodyLen))
+			}
+			for _, b := range test.bodies {
+				w.Write(b)
+			}
+		}))
+		req := &http.Request{
+			Method: "GET",
+			URL:    &url.URL{Path: "/", Scheme: "http", Host: ln.Addr().String()},
+			Header: make(http.Header),
+			Close:  true,
+		}
+		req.Header.Set("Accept-Encoding", "gzip")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("Unexpected error making http request in test iteration %d: %v", num, err)
+		}
+		defer res.Body.Close()
 
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		t.Fatalf("Unexpected error reading response body: %v", err)
-	}
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			t.Fatalf("Unexpected error reading response body in test iteration %d: %v", num, err)
+		}
 
-	l, err := strconv.Atoi(res.Header.Get("Content-Length"))
-	if err != nil {
-		t.Fatalf("Unexpected error parsing Content-Length: %v", err)
+		l, err := strconv.Atoi(res.Header.Get("Content-Length"))
+		if err != nil {
+			t.Fatalf("Unexpected error parsing Content-Length in test iteration %d: %v", num, err)
+		}
+		if test.emptyBody {
+			assert.Empty(t, body, fmt.Sprintf("for test iteration %d", num))
+			assert.Equal(t, 0, l, fmt.Sprintf("for test iteration %d", num))
+		} else {
+			assert.Len(t, body, l, fmt.Sprintf("for test iteration %d", num))
+		}
+		assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"), fmt.Sprintf("for test iteration %d", num))
+		assert.NotEqual(t, test.bodyLen, l, fmt.Sprintf("for test iteration %d", num))
 	}
-	assert.Len(t, body, l)
-	assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
-	assert.NotEqual(t, b, body)
 }
 
 func TestGzipHandlerMinSizeMustBePositive(t *testing.T) {
