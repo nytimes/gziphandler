@@ -159,6 +159,8 @@ func (w *GzipResponseWriter) startGzip() error {
 	// Write the header to gzip response.
 	if w.code != 0 {
 		w.ResponseWriter.WriteHeader(w.code)
+		// Ensure that no other WriteHeader's happen
+		w.code = 0
 	}
 
 	// Initialize and flush the buffer into the gzip response if there are any bytes.
@@ -184,6 +186,8 @@ func (w *GzipResponseWriter) startGzip() error {
 func (w *GzipResponseWriter) startPlain() error {
 	if w.code != 0 {
 		w.ResponseWriter.WriteHeader(w.code)
+		// Ensure that no other WriteHeader's happen
+		w.code = 0
 	}
 	w.ignore = true
 	// If Write was never called then don't call Write on the underlying ResponseWriter.
