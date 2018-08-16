@@ -346,6 +346,58 @@ func TestGzipDoubleClose(t *testing.T) {
 	assert.False(t, w1 == w2)
 }
 
+type panicOnSecondWriteHeaderWriter struct {
+	http.ResponseWriter
+	headerWritten bool
+}
+
+func (w *panicOnSecondWriteHeaderWriter) WriteHeader(s int) {
+	if w.headerWritten {
+		panic("header already written")
+	}
+	w.headerWritten = true
+	w.ResponseWriter.WriteHeader(s)
+}
+
+func TestGzipHandlerDoubleWriteHeader(t *testing.T) {
+	handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "15000")
+		// Specifically write the header here
+		w.WriteHeader(304)
+		// Ensure that after a Write the header isn't triggered again on close
+		w.Write(nil)
+	}))
+	wrapper := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w = &panicOnSecondWriteHeaderWriter{
+			ResponseWriter: w,
+		}
+		handler.ServeHTTP(w, r)
+	})
+
+	rec := httptest.NewRecorder()
+	// TODO: in Go1.7 httptest.NewRequest was introduced this should be used
+	// once 1.6 is not longer supported.
+	req := &http.Request{
+		Method:     "GET",
+		URL:        &url.URL{Path: "/"},
+		Proto:      "HTTP/1.1",
+		ProtoMinor: 1,
+		RemoteAddr: "192.0.2.1:1234",
+		Header:     make(http.Header),
+	}
+	req.Header.Set("Accept-Encoding", "gzip")
+	wrapper.ServeHTTP(rec, req)
+	body, err := ioutil.ReadAll(rec.Body)
+	if err != nil {
+		t.Fatalf("Unexpected error reading response body: %v", err)
+	}
+	assert.Empty(t, body)
+	header := rec.Header()
+	assert.Equal(t, "gzip", header.Get("Content-Encoding"))
+	assert.Equal(t, "Accept-Encoding", header.Get("Vary"))
+	assert.Equal(t, 304, rec.Code)
+}
+
 func TestStatusCodes(t *testing.T) {
 	handler := GzipHandler(http.NotFoundHandler())
 	r := httptest.NewRequest("GET", "/", nil)
