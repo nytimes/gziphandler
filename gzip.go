@@ -112,14 +112,13 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 	// On the first write, w.buf changes from nil to a valid slice
 	w.buf = append(w.buf, b...)
 
-	// If they provided a Content-Length, store that to check against minSize.
-	var cl int
-	if cls := w.Header().Get(contentLength); cls != "" {
-		cl, _ = strconv.Atoi(cls)
-	}
-
-	// Only continue if they didn't already choose an encoding.
-	if w.Header().Get(contentEncoding) == "" {
+	var (
+		cl, _ = strconv.Atoi(w.Header().Get(contentLength))
+		ct    = w.Header().Get(contentType)
+		ce    = w.Header().Get(contentEncoding)
+	)
+	// Only continue if they didn't already choose an encoding or a known unhandled content length or type.
+	if ce == "" && (cl == 0 || cl >= w.minSize) && (ct == "" || handleContentType(w.contentTypes, ct)) {
 		// If the current buffer is less than minSize and a Content-Length isn't set, then wait until we have more data.
 		if len(w.buf) < w.minSize && cl == 0 {
 			return len(b), nil
@@ -127,11 +126,12 @@ func (w *GzipResponseWriter) Write(b []byte) (int, error) {
 		// If the Content-Length is larger than minSize or the current buffer is larger than minSize, then continue.
 		if cl >= w.minSize || len(w.buf) >= w.minSize {
 			// If a Content-Type wasn't specified, infer it from the current buffer.
-			if _, ok := w.Header()[contentType]; !ok {
-				w.Header().Set(contentType, http.DetectContentType(w.buf))
+			if ct == "" {
+				ct = http.DetectContentType(w.buf)
+				w.Header().Set(contentType, ct)
 			}
 			// If the Content-Type is acceptable to GZIP, initialize the GZIP writer.
-			if handleContentType(w.contentTypes, w) {
+			if handleContentType(w.contentTypes, ct) {
 				if err := w.startGzip(); err != nil {
 					return 0, err
 				}
@@ -248,15 +248,17 @@ func (w *GzipResponseWriter) Close() error {
 // http.ResponseWriter if it is an http.Flusher. This makes GzipResponseWriter
 // an http.Flusher.
 func (w *GzipResponseWriter) Flush() {
-	if w.gw == nil {
-		// Only flush once startGzip has been called.
+	if w.gw == nil && !w.ignore {
+		// Only flush once startGzip or startPlain has been called.
 		//
-		// Flush is thus a no-op until the written body
-		// exceeds minSize.
+		// Flush is thus a no-op until we're certain whether a plain
+		// or gzipped response will be served.
 		return
 	}
 
-	w.gw.Flush()
+	if w.gw != nil {
+		w.gw.Flush()
+	}
 
 	if fw, ok := w.ResponseWriter.(http.Flusher); ok {
 		fw.Flush()
@@ -451,13 +453,12 @@ func acceptsGzip(r *http.Request) bool {
 }
 
 // returns true if we've been configured to compress the specific content type.
-func handleContentType(contentTypes []parsedContentType, w http.ResponseWriter) bool {
+func handleContentType(contentTypes []parsedContentType, ct string) bool {
 	// If contentTypes is empty we handle all content types.
 	if len(contentTypes) == 0 {
 		return true
 	}
 
-	ct := w.Header().Get(contentType)
 	mediaType, params, err := mime.ParseMediaType(ct)
 	if err != nil {
 		return false
