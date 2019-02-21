@@ -348,6 +348,7 @@ func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error
 // Parsed representation of one of the inputs to ContentTypes.
 // See https://golang.org/pkg/mime/#ParseMediaType
 type parsedContentType struct {
+	not       bool
 	mediaType string
 	params    map[string]string
 }
@@ -431,7 +432,44 @@ func ContentTypes(types []string) option {
 		for _, v := range types {
 			mediaType, params, err := mime.ParseMediaType(v)
 			if err == nil {
-				c.contentTypes = append(c.contentTypes, parsedContentType{mediaType, params})
+				c.contentTypes = append(c.contentTypes, parsedContentType{
+					mediaType: mediaType,
+					params:    params,
+				})
+			}
+		}
+	}
+}
+
+// ContentTypes specifies a list of content types to compare
+// the Content-Type header to before compressing. If any
+// match, the response will be returned as-is.
+//
+// Content types are compared in a case-insensitive, whitespace-ignored
+// manner.
+//
+// A MIME type without any other directive will match a content type
+// that has the same MIME type, regardless of that content type's other
+// directives. I.e., "text/html" will match both "text/html" and
+// "text/html; charset=utf-8".
+//
+// A MIME type with any other directive will only match a content type
+// that has the same MIME type and other directives. I.e.,
+// "text/html; charset=utf-8" will only match "text/html; charset=utf-8".
+//
+// By default, responses are gzipped regardless of
+// Content-Type.
+func NotContentTypes(types []string) option {
+	return func(c *config) {
+		c.contentTypes = []parsedContentType{}
+		for _, v := range types {
+			mediaType, params, err := mime.ParseMediaType(v)
+			if err == nil {
+				c.contentTypes = append(c.contentTypes, parsedContentType{
+					not:       true,
+					mediaType: mediaType,
+					params:    params,
+				})
 			}
 		}
 	}
@@ -464,13 +502,17 @@ func handleContentType(contentTypes []parsedContentType, ct string) bool {
 		return false
 	}
 
+	var match = false
 	for _, c := range contentTypes {
-		if c.equals(mediaType, params) {
-			return true
+		if c.equals(mediaType, params) && !c.not {
+			match = true
+		} else if c.equals(mediaType, params) && c.not {
+			match = false
+			break
 		}
 	}
 
-	return false
+	return match
 }
 
 // parseEncodings attempts to parse a list of codings, per RFC 2616, as might
