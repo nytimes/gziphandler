@@ -1,4 +1,4 @@
-# Contributing to NYTimes/gziphandler
+# Contributing to nytimes/gziphandler
 
 This is an open source project started by handful of developers at The New York Times and open to the entire Go community.
 
