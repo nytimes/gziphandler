@@ -208,7 +208,7 @@ func TestGzipHandlerNoBody(t *testing.T) {
 	}
 }
 
-func TestGzipHnalderStream(t *testing.T) {
+func TestGzipHandlerStream(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:")
 	if err != nil {
 		t.Fatalf("failed creating listen socket: %v", err)
