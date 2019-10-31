@@ -166,11 +166,10 @@ func (w *GzipResponseWriter) startGzip() error {
 	// Initialize and flush the buffer into the gzip response if there are any bytes.
 	// If there aren't any, we shouldn't initialize it yet because on Close it will
 	// write the gzip header even if nothing was ever written.
-	if len(w.buf) >= w.minSize {
+	if len(w.buf) > 0 {
 		// Initialize the GZIP response.
 		w.init()
 		n, err := w.gw.Write(w.buf)
-
 		// This should never happen (per io.Writer docs), but if the write didn't
 		// accept the entire buffer but returned no specific error, we have no clue
 		// what's going on, so abort just to be safe.
