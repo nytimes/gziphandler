@@ -170,7 +170,6 @@ func (w *GzipResponseWriter) startGzip() error {
 		// Initialize the GZIP response.
 		w.init()
 		n, err := w.gw.Write(w.buf)
-
 		// This should never happen (per io.Writer docs), but if the write didn't
 		// accept the entire buffer but returned no specific error, we have no clue
 		// what's going on, so abort just to be safe.

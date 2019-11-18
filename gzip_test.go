@@ -208,6 +208,51 @@ func TestGzipHandlerNoBody(t *testing.T) {
 	}
 }
 
+func TestGzipHandlerStream(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:")
+	if err != nil {
+		t.Fatalf("failed creating listen socket: %v", err)
+	}
+	defer ln.Close()
+	srv := &http.Server{
+		Handler: nil,
+	}
+	go srv.Serve(ln)
+
+	handler, ok := GzipHandlerWithOpts(MinSize(0))
+	assert.Nil(t, ok)
+	srv.Handler = handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		assert.Equal(t, true, ok)
+
+		w.WriteHeader(200)
+		w.Write([]byte(""))
+		flusher.Flush()
+		w.Write([]byte("subsequent write with data"))
+		flusher.Flush()
+	}))
+
+	req := &http.Request{
+		Method: "GET",
+		URL:    &url.URL{Path: "/", Scheme: "http", Host: ln.Addr().String()},
+		Header: make(http.Header),
+		Close:  false,
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Unexpected error making http request %v", err)
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("Unexpected error reading response body %v", err)
+	}
+
+	assert.Equal(t, "subsequent write with data", string(body))
+
+}
 func TestGzipHandlerContentLength(t *testing.T) {
 	testBodyBytes := []byte(testBody)
 	tests := []struct {
