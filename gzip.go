@@ -29,11 +29,33 @@ const (
 	// The examples seem to indicate that it is.
 	DefaultQValue = 1.0
 
-	// DefaultMinSize is the default minimum size until we enable gzip compression.
-	// 1500 bytes is the MTU size for the internet since that is the largest size allowed at the network layer.
-	// If you take a file that is 1300 bytes and compress it to 800 bytes, it’s still transmitted in that same 1500 byte packet regardless, so you’ve gained nothing.
-	// That being the case, you should restrict the gzip compression to files with a size greater than a single packet, 1400 bytes (1.4KB) is a safe value.
-	DefaultMinSize = 1400
+	// DefaultMinSize is the default minimum size for which we enable gzip compression.
+	//
+	// This is provided for two main reasons:
+	// - Compressing very small payloads (less than a few tens of bytes) may actual increase
+	//   their size.
+	// - Compressing small payloads payloads may actually decrease end-to-end performance 
+	//   due to the additional latency imposed by compressing and decompressing the payload.
+	//
+	// As it should be clear given the two points above the optimal default minimum size
+	// depends on many factors, including the compute resources available for compression
+	// and decompression, network latency and bandwidth, the nature of the payload, traffic
+	// patterns, etc.
+	//
+	// These are the defaults/suggested values by different sources: nginx, 20 bytes;
+	// apache/mod_gzip, 500 bytes; apache/pagespeed, 0 bytes. In the past, google recommended
+	// 150 bytes and akamai 860 bytes, but both of these recommendations seems to have
+	// disappeared from their current documentation.
+	//
+	// Networks do not normally have "MTU-sized reserved slots" that can be exclsuively used
+	// by a single packet at a time, so arguments for choosing a minimum compression size of
+	// "slightly less than 1 MTU" are groundless in most cases. Furthermore, there are precious
+	// few guarantees about MTUs on the internet, and that MTUs "should be 1500 bytes" is
+	// definitely not one of them.
+	//
+	// For all the reasons outlined above, DefaultMinSize is set to the nginx default. This
+	// may change in the future in case new data suggests a better default.
+	DefaultMinSize = 20
 )
 
 // gzipWriterPools stores a sync.Pool for each compression level for reuse of
