@@ -51,8 +51,8 @@ const (
 	//
 	// Networks do not normally have "MTU-sized reserved slots" that can be exclsuively used
 	// by a single packet at a time, so arguments for choosing a minimum compression size of
-	// "slightly less than 1 MTU" are groundless in most cases. Furthermore, there are precious
-	// few guarantees about MTUs on the internet, and that MTUs "should be 1500 bytes" is
+	// "slightly less than 1 MTU" are groundless in most cases. Furthermore, there are
+	// precious few guarantees about MTUs on the internet, and "MTUs are 1500 bytes" is
 	// definitely not one of them.
 	//
 	// For all the reasons outlined above, DefaultMinSize is set to the nginx default. This
