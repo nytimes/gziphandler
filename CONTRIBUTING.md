@@ -1,8 +1,8 @@
-# Contributing to NYTimes/gziphandler
+# Contributing to CAFxX/gziphandler
 
-This is an open source project started by handful of developers at The New York Times and open to the entire Go community.
+This is an open source project started by handful of developers at The New York Times, forked by Carlo Alberto Ferraris and open to the entire Go community.
 
-We really appreciate your help!
+All help is appreciated!
 
 ## Filing issues
 

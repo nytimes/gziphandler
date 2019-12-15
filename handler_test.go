@@ -13,11 +13,12 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/andybalholm/brotli"
 	"github.com/stretchr/testify/assert"
 )
 
 const (
-	smallTestBody = "aaabbcaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbc"
+	smallTestBody = "aaabbcaaabbbcccaaab"
 	testBody      = "aaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbccc aaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbccc aaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbccc aaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbccc aaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbccc aaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbccc aaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbcccaaabbbccc"
 )
 
@@ -47,16 +48,17 @@ func TestGzipHandler(t *testing.T) {
 	handler := newTestHandler(testBody)
 
 	// requests without accept-encoding are passed along as-is
+	{
+		req, _ := http.NewRequest("GET", "/whatever", nil)
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		res := resp.Result()
 
-	req1, _ := http.NewRequest("GET", "/whatever", nil)
-	resp1 := httptest.NewRecorder()
-	handler.ServeHTTP(resp1, req1)
-	res1 := resp1.Result()
-
-	assert.Equal(t, 200, res1.StatusCode)
-	assert.Equal(t, "", res1.Header.Get("Content-Encoding"))
-	assert.Equal(t, "Accept-Encoding", res1.Header.Get("Vary"))
-	assert.Equal(t, testBody, resp1.Body.String())
+		assert.Equal(t, 200, res.StatusCode)
+		assert.Equal(t, "", res.Header.Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+		assert.Equal(t, testBody, resp.Body.String())
+	}
 
 	// but requests with accept-encoding:gzip are compressed if possible
 
@@ -70,6 +72,48 @@ func TestGzipHandler(t *testing.T) {
 	assert.Equal(t, "gzip", res2.Header.Get("Content-Encoding"))
 	assert.Equal(t, "Accept-Encoding", res2.Header.Get("Vary"))
 	assert.Equal(t, gzipStrLevel(testBody, gzip.DefaultCompression), resp2.Body.Bytes())
+
+	// same, but with accept-encoding:br
+	{
+		req, _ := http.NewRequest("GET", "/whatever", nil)
+		req.Header.Set("Accept-Encoding", "br")
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		res := resp.Result()
+
+		assert.Equal(t, 200, res.StatusCode)
+		assert.Equal(t, "br", res.Header.Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+		assert.Equal(t, brotliStrLevel(testBody, brotliDefaultCompression), resp.Body.Bytes())
+	}
+
+	// same, but with accept-encoding:gzip,br (br wins)
+	{
+		req, _ := http.NewRequest("GET", "/whatever", nil)
+		req.Header.Set("Accept-Encoding", "gzip,br")
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		res := resp.Result()
+
+		assert.Equal(t, 200, res.StatusCode)
+		assert.Equal(t, "br", res.Header.Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+		assert.Equal(t, brotliStrLevel(testBody, brotliDefaultCompression), resp.Body.Bytes())
+	}
+
+	// same, but with accept-encoding:gzip,br;q=0.5 (gzip wins)
+	{
+		req, _ := http.NewRequest("GET", "/whatever", nil)
+		req.Header.Set("Accept-Encoding", "gzip,br;q=0.5")
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		res := resp.Result()
+
+		assert.Equal(t, 200, res.StatusCode)
+		assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+		assert.Equal(t, gzipStrLevel(testBody, gzip.DefaultCompression), resp.Body.Bytes())
+	}
 
 	// content-type header is correctly set based on uncompressed body
 
@@ -90,7 +134,7 @@ func TestGzipHandlerSmallBodyNoCompression(t *testing.T) {
 	handler.ServeHTTP(resp, req)
 	res := resp.Result()
 
-	// with less than 1400 bytes the response should not be gzipped
+	// with less than 20 bytes the response should not be gzipped
 
 	assert.Equal(t, 200, res.StatusCode)
 	assert.Equal(t, "", res.Header.Get("Content-Encoding"))
@@ -324,7 +368,7 @@ func TestGzipHandlerMinSize(t *testing.T) {
 func TestGzipDoubleClose(t *testing.T) {
 	// reset the pool for the default compression so we can make sure duplicates
 	// aren't added back by double close
-	addLevelPool(gzip.DefaultCompression)
+	addGzipLevelPool(gzip.DefaultCompression)
 
 	handler := GzipHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// call close here and it'll get called again interally by
@@ -340,8 +384,8 @@ func TestGzipDoubleClose(t *testing.T) {
 
 	// the second close shouldn't have added the same writer
 	// so we pull out 2 writers from the pool and make sure they're different
-	w1 := gzipWriterPools[poolIndex(gzip.DefaultCompression)].Get()
-	w2 := gzipWriterPools[poolIndex(gzip.DefaultCompression)].Get()
+	w1 := gzipWriterPools[gzipPoolIndex(gzip.DefaultCompression)].Get()
+	w2 := gzipWriterPools[gzipPoolIndex(gzip.DefaultCompression)].Get()
 	// assert.NotEqual looks at the value and not the address, so we use regular ==
 	assert.False(t, w1 == w2)
 }
@@ -586,7 +630,7 @@ func TestContentTypes(t *testing.T) {
 			io.WriteString(w, testBody)
 		})
 
-		wrapper, err := GzipHandlerWithOpts(ContentTypes(tt.acceptedContentTypes))
+		wrapper, err := GzipHandlerWithOpts(ContentTypes(tt.acceptedContentTypes, false))
 		if !assert.Nil(t, err, "NewGzipHandlerWithOpts returned error", tt.name) {
 			continue
 		}
@@ -608,12 +652,18 @@ func TestContentTypes(t *testing.T) {
 
 // --------------------------------------------------------------------
 
-func BenchmarkGzipHandler_S2k(b *testing.B)   { benchmark(b, false, 2048) }
-func BenchmarkGzipHandler_S20k(b *testing.B)  { benchmark(b, false, 20480) }
-func BenchmarkGzipHandler_S100k(b *testing.B) { benchmark(b, false, 102400) }
-func BenchmarkGzipHandler_P2k(b *testing.B)   { benchmark(b, true, 2048) }
-func BenchmarkGzipHandler_P20k(b *testing.B)  { benchmark(b, true, 20480) }
-func BenchmarkGzipHandler_P100k(b *testing.B) { benchmark(b, true, 102400) }
+func BenchmarkGzipHandler_S2k(b *testing.B)         { benchmark(b, false, 2048, "gzip") }
+func BenchmarkGzipHandler_S20k(b *testing.B)        { benchmark(b, false, 20480, "gzip") }
+func BenchmarkGzipHandler_S100k(b *testing.B)       { benchmark(b, false, 102400, "gzip") }
+func BenchmarkGzipHandler_P2k(b *testing.B)         { benchmark(b, true, 2048, "gzip") }
+func BenchmarkGzipHandler_P20k(b *testing.B)        { benchmark(b, true, 20480, "gzip") }
+func BenchmarkGzipHandler_P100k(b *testing.B)       { benchmark(b, true, 102400, "gzip") }
+func BenchmarkGzipHandlerBrotli_S2k(b *testing.B)   { benchmark(b, false, 2048, "br") }
+func BenchmarkGzipHandlerBrotli_S20k(b *testing.B)  { benchmark(b, false, 20480, "br") }
+func BenchmarkGzipHandlerBrotli_S100k(b *testing.B) { benchmark(b, false, 102400, "br") }
+func BenchmarkGzipHandlerBrotli_P2k(b *testing.B)   { benchmark(b, true, 2048, "br") }
+func BenchmarkGzipHandlerBrotli_P20k(b *testing.B)  { benchmark(b, true, 20480, "br") }
+func BenchmarkGzipHandlerBrotli_P100k(b *testing.B) { benchmark(b, true, 102400, "br") }
 
 // --------------------------------------------------------------------
 
@@ -625,14 +675,22 @@ func gzipStrLevel(s string, lvl int) []byte {
 	return b.Bytes()
 }
 
-func benchmark(b *testing.B, parallel bool, size int) {
+func brotliStrLevel(s string, lvl int) []byte {
+	var b bytes.Buffer
+	w := brotli.NewWriterLevel(&b, lvl)
+	io.WriteString(w, s)
+	w.Close()
+	return b.Bytes()
+}
+
+func benchmark(b *testing.B, parallel bool, size int, ae string) {
 	bin, err := ioutil.ReadFile("testdata/benchmark.json")
 	if err != nil {
 		b.Fatal(err)
 	}
 
 	req, _ := http.NewRequest("GET", "/whatever", nil)
-	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", ae)
 	handler := newTestHandler(string(bin[:size]))
 
 	if parallel {
