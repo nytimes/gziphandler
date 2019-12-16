@@ -25,35 +25,12 @@ const (
 	DefaultMinSize = 20
 )
 
-// MustNewGzipLevelHandler behaves just like NewGzipLevelHandler except that in
-// an error case it panics rather than returning an error.
-func MustNewGzipLevelHandler(level int) func(http.Handler) http.Handler {
-	wrap, err := NewGzipLevelHandler(level)
-	if err != nil {
-		panic(err)
-	}
-	return wrap
-}
-
-// NewGzipLevelHandler returns a wrapper function (often known as middleware)
-// which can be used to wrap an HTTP handler to transparently gzip the response
-// body if the client supports it (via the Accept-Encoding header). Responses will
-// be encoded at the given gzip compression level. An error will be returned only
-// if an invalid gzip compression level is given, so if one can ensure the level
-// is valid, the returned error can be safely ignored.
-func NewGzipLevelHandler(level int) (func(http.Handler) http.Handler, error) {
-	return NewGzipLevelAndMinSize(level, DefaultMinSize)
-}
-
-// NewGzipLevelAndMinSize behave as NewGzipLevelHandler except it let the caller
-// specify the minimum size before compression.
-func NewGzipLevelAndMinSize(level, minSize int) (func(http.Handler) http.Handler, error) {
-	return GzipHandlerWithOpts(GzipCompressionLevel(level), MinSize(minSize))
-}
-
-// GzipHandlerWithOpts behaves like NewGzipLevelHandler except it allows the caller
-// to specify any of the supported options.
-func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error) {
+// Middleware returns a wrapper function (often known as middleware)
+// which can be used to wrap an HTTP handler to transparently compress the response
+// body if the client supports it (via the Accept-Encoding header).
+// It is possible to pass one or more options to modify the middleware configuration.
+// An error will be returned if invalid options are given.
+func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
 	c := &config{
 		gzLevel: gzip.DefaultCompression,
 		brLevel: brotliDefaultCompression,
@@ -124,11 +101,12 @@ func (c *config) validate() error {
 	return nil
 }
 
-type option func(c *config)
+// Option can be passed to Middleware to control its configuration.
+type Option func(c *config)
 
 // MinSize is an option that controls the minimum size of payloads that
 // should be compressed. The default is DefaultMinSize.
-func MinSize(size int) option {
+func MinSize(size int) Option {
 	return func(c *config) {
 		c.minSize = size
 	}
@@ -137,7 +115,7 @@ func MinSize(size int) option {
 // GzipCompressionLevel is an option that controls the Gzip compression
 // level to be used when compressing payloads.
 // The default is gzip.DefaultCompression.
-func GzipCompressionLevel(level int) option {
+func GzipCompressionLevel(level int) Option {
 	return func(c *config) {
 		c.gzLevel = level
 	}
@@ -147,7 +125,7 @@ func GzipCompressionLevel(level int) option {
 // level to be used when compressing payloads.
 // The default is 3 (the same default used in the reference brotli C
 // implementation).
-func BrotliCompressionLevel(level int) option {
+func BrotliCompressionLevel(level int) Option {
 	return func(c *config) {
 		c.brLevel = level
 	}
@@ -157,16 +135,8 @@ func BrotliCompressionLevel(level int) option {
 // can be used to compress a response (i.e. in case the client supports both
 // encodings, and the MIME type of the response is allowed for both encodings).
 // See the comments on the PreferXxx constants for the supported values.
-func Prefer(prefer preferType) option {
+func Prefer(prefer preferType) Option {
 	return func(c *config) {
 		c.prefer = prefer
 	}
-}
-
-// GzipHandler wraps an HTTP handler, to transparently gzip the response body if
-// the client supports it (via the Accept-Encoding header). This will compress at
-// the default compression level.
-func GzipHandler(h http.Handler) http.Handler {
-	wrapper, _ := NewGzipLevelHandler(gzip.DefaultCompression)
-	return wrapper(h)
 }

@@ -28,7 +28,7 @@ import "mime"
 // content types that match the provided list are compressed.
 //
 // By default, responses are compressed regardless of Content-Type.
-func ContentTypes(types []string, blacklist bool) option {
+func ContentTypes(types []string, blacklist bool) Option {
 	return func(c *config) {
 		c.contentTypes = []parsedContentType{}
 		for _, v := range types {
