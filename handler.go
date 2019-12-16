@@ -74,7 +74,7 @@ func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error
 			w.Header().Add(vary, acceptEncoding)
 
 			if ac := acceptsCompression(r); ac != acceptsNone {
-				gw := &GzipResponseWriter{
+				gw := &gzipResponseWriter{
 					ResponseWriter: w,
 					gzLevel:        c.gzLevel,
 					brLevel:        c.brLevel,
@@ -87,7 +87,7 @@ func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error
 				defer gw.Close()
 
 				if _, ok := w.(http.CloseNotifier); ok {
-					w = GzipResponseWriterWithCloseNotify{gw}
+					w = gzipResponseWriterWithCloseNotify{gw}
 				} else {
 					w = gw
 				}
