@@ -1,10 +1,22 @@
 package gziphandler
 
-type preferType int
+// Prefer controls the behavior of the middleware in case both Gzip and Brotli
+// can be used to compress a response (i.e. in case the client supports both
+// encodings, and the MIME type of the response is allowed for both encodings).
+// See the comments on the PreferType constants for the supported values.
+func Prefer(prefer PreferType) Option {
+	return func(c *config) {
+		c.prefer = prefer
+	}
+}
+
+// PreferType allows to control the choice of compression algorithm when
+// multiple algorithms are allowed by both client and server.
+type PreferType int
 
 const (
 	// PreferGzip uses Gzip if the client supports both Brotli and Gzip.
-	PreferGzip preferType = iota
+	PreferGzip PreferType = iota
 
 	// PreferBrotli uses Brotli if the client supports both Brotli and Gzip.
 	PreferBrotli
@@ -24,7 +36,7 @@ const (
 )
 
 // returns true if we should try gzip first
-func (p preferType) priorityFor(a acceptsType) priorityType {
+func (p PreferType) priorityFor(a acceptsType) priorityType {
 	if p == PreferClientThenGzip || p == PreferClientThenBrotli {
 		switch a {
 		case acceptsBrotliThenGzip, acceptsBrotli:

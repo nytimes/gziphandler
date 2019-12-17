@@ -11,7 +11,7 @@ const (
 )
 
 // returns how we should handle the request
-func handleContentTypes(gzipContentTypes, brotliContentTypes []parsedContentType, blacklist bool, ct string, prefer preferType, accept acceptsType) handleType {
+func handleContentTypes(gzipContentTypes, brotliContentTypes []parsedContentType, blacklist bool, ct string, prefer PreferType, accept acceptsType) handleType {
 	switch prefer.priorityFor(accept) {
 	case priorityGzip:
 		if accept.gzip() && handleContentType(gzipContentTypes, blacklist, ct) {

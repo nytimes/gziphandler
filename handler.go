@@ -82,7 +82,7 @@ type config struct {
 	brLevel      int
 	contentTypes []parsedContentType
 	blacklist    bool
-	prefer       preferType
+	prefer       PreferType
 }
 
 func (c *config) validate() error {
@@ -95,7 +95,13 @@ func (c *config) validate() error {
 	}
 
 	if c.minSize < 0 {
-		return fmt.Errorf("minimum size must be more than zero")
+		return fmt.Errorf("minimum size must be more than zero: %d", c.minSize)
+	}
+
+	switch c.prefer {
+	case PreferBrotli, PreferClientThenBrotli, PreferClientThenGzip, PreferGzip:
+	default:
+		return fmt.Errorf("invalid prefer config: %v", c.prefer)
 	}
 
 	return nil
@@ -128,15 +134,5 @@ func GzipCompressionLevel(level int) Option {
 func BrotliCompressionLevel(level int) Option {
 	return func(c *config) {
 		c.brLevel = level
-	}
-}
-
-// Prefer controls the behavior of the middleware in case both Gzip and Brotli
-// can be used to compress a response (i.e. in case the client supports both
-// encodings, and the MIME type of the response is allowed for both encodings).
-// See the comments on the PreferXxx constants for the supported values.
-func Prefer(prefer preferType) Option {
-	return func(c *config) {
-		c.prefer = prefer
 	}
 }

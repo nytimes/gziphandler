@@ -19,7 +19,7 @@ import (
 type gzipResponseWriter struct {
 	http.ResponseWriter
 
-	prefer  preferType
+	prefer  PreferType
 	accept  acceptsType
 	gzLevel int
 	brLevel int
