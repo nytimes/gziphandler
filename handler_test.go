@@ -61,17 +61,18 @@ func TestGzipHandler(t *testing.T) {
 	}
 
 	// but requests with accept-encoding:gzip are compressed if possible
+	{
+		req, _ := http.NewRequest("GET", "/whatever", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		res := resp.Result()
 
-	req2, _ := http.NewRequest("GET", "/whatever", nil)
-	req2.Header.Set("Accept-Encoding", "gzip")
-	resp2 := httptest.NewRecorder()
-	handler.ServeHTTP(resp2, req2)
-	res2 := resp2.Result()
-
-	assert.Equal(t, 200, res2.StatusCode)
-	assert.Equal(t, "gzip", res2.Header.Get("Content-Encoding"))
-	assert.Equal(t, "Accept-Encoding", res2.Header.Get("Vary"))
-	assert.Equal(t, gzipStrLevel(testBody, gzip.DefaultCompression), resp2.Body.Bytes())
+		assert.Equal(t, 200, res.StatusCode)
+		assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+		assert.Equal(t, gzipStrLevel(testBody, gzip.DefaultCompression), resp.Body.Bytes())
+	}
 
 	// same, but with accept-encoding:br
 	{
@@ -101,6 +102,20 @@ func TestGzipHandler(t *testing.T) {
 		assert.Equal(t, brotliStrLevel(testBody, brotliDefaultCompression), resp.Body.Bytes())
 	}
 
+	// same, but with accept-encoding:gzip,br and PreferGzip (gzip wins)
+	{
+		req, _ := http.NewRequest("GET", "/whatever", nil)
+		req.Header.Set("Accept-Encoding", "gzip,br")
+		resp := httptest.NewRecorder()
+		newTestHandler(testBody, Prefer(PreferGzip)).ServeHTTP(resp, req)
+		res := resp.Result()
+
+		assert.Equal(t, 200, res.StatusCode)
+		assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+		assert.Equal(t, gzipStrLevel(testBody, gzip.DefaultCompression), resp.Body.Bytes())
+	}
+
 	// same, but with accept-encoding:gzip,br;q=0.5 (gzip wins)
 	{
 		req, _ := http.NewRequest("GET", "/whatever", nil)
@@ -115,14 +130,29 @@ func TestGzipHandler(t *testing.T) {
 		assert.Equal(t, gzipStrLevel(testBody, gzip.DefaultCompression), resp.Body.Bytes())
 	}
 
+	// same, but with accept-encoding:gzip,br;q=0.5 and PreferBrotli (brotli wins)
+	{
+		req, _ := http.NewRequest("GET", "/whatever", nil)
+		req.Header.Set("Accept-Encoding", "gzip,br;q=0.5")
+		resp := httptest.NewRecorder()
+		newTestHandler(testBody, Prefer(PreferBrotli)).ServeHTTP(resp, req)
+		res := resp.Result()
+
+		assert.Equal(t, 200, res.StatusCode)
+		assert.Equal(t, "br", res.Header.Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+		assert.Equal(t, brotliStrLevel(testBody, brotliDefaultCompression), resp.Body.Bytes())
+	}
+
 	// content-type header is correctly set based on uncompressed body
+	{
+		req, _ := http.NewRequest("GET", "/whatever", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
 
-	req3, _ := http.NewRequest("GET", "/whatever", nil)
-	req3.Header.Set("Accept-Encoding", "gzip")
-	res3 := httptest.NewRecorder()
-	handler.ServeHTTP(res3, req3)
-
-	assert.Equal(t, http.DetectContentType([]byte(testBody)), res3.Header().Get("Content-Type"))
+		assert.Equal(t, http.DetectContentType([]byte(testBody)), res.Header().Get("Content-Type"))
+	}
 }
 
 func TestGzipHandlerSmallBodyNoCompression(t *testing.T) {
@@ -719,8 +749,11 @@ func runBenchmark(b *testing.B, req *http.Request, handler http.Handler) {
 	}
 }
 
-func newTestHandler(body string) http.Handler {
-	mw, _ := Middleware()
+func newTestHandler(body string, opts ...Option) http.Handler {
+	mw, err := Middleware(opts...)
+	if err != nil {
+		panic(err)
+	}
 	return mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/gzipped":

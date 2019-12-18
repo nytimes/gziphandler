@@ -2,6 +2,7 @@ package gziphandler
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -96,7 +97,7 @@ func parseCoding(s string) (coding string, qvalue float64, err error) {
 		} else if strings.HasPrefix(part, "q=") {
 			qvalue, err = strconv.ParseFloat(strings.TrimPrefix(part, "q="), 64)
 
-			if qvalue < 0.0 {
+			if qvalue < 0.0 || math.IsNaN(qvalue) {
 				qvalue = 0.0
 			} else if qvalue > 1.0 {
 				qvalue = 1.0
