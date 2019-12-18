@@ -35,6 +35,7 @@ func TestParseEncodings(t *testing.T) {
 		// More random stuff
 		"AAA;q=1":     {"aaa": 1.0},
 		"BBB ; q = 2": {"bbb": 1.0},
+		"CCC; q = -1": {"ccc": 0.0},
 	}
 
 	for eg, exp := range examples {

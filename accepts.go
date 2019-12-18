@@ -88,14 +88,14 @@ func parseEncodings(s string) (codings, error) {
 // as might appear in an Accept-Encoding header. It attempts to forgive minor
 // formatting errors.
 func parseCoding(s string) (coding string, qvalue float64, err error) {
-	for n, part := range strings.Split(s, ";") {
+	for n, part := range strings.SplitN(s, ";", 2) {
 		part = strings.TrimSpace(part)
 		qvalue = defaultQValue
 
 		if n == 0 {
 			coding = strings.ToLower(part)
-		} else if strings.HasPrefix(part, "q=") {
-			qvalue, err = strconv.ParseFloat(strings.TrimPrefix(part, "q="), 64)
+		} else if part := strings.Replace(part, " ", "", -1); strings.HasPrefix(part, "q=") {
+			qvalue, _ = strconv.ParseFloat(strings.TrimPrefix(part, "q="), 64)
 
 			if qvalue < 0.0 || math.IsNaN(qvalue) {
 				qvalue = 0.0
