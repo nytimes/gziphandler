@@ -1,10 +1,18 @@
 Gzip (and Brotli) Handler
 ============
 
+[![Documentation](https://godoc.org/github.com/CAFxX/gziphandler?status.svg)](https://godoc.org/github.com/CAFxX/gziphandler)
+[![Coverage](https://gocover.io/_badge/github.com/CAFxX/gziphandler)](https://gocover.io/github.com/CAFxX/gziphandler)
+
 This is a tiny Go package which wraps HTTP handlers to transparently compress
 response bodies, using brotli or gzip, for clients which support it. Although 
 it's usually simpler to leave that to a reverse proxy (like nginx or Varnish),
 this package is useful when that's undesirable.
+
+**Note: This package was recently forked from NYTimes/gziphandler, so this is where
+the name comes from. Since maintaining drop-in compatibility is not a goal of this
+fork, and since the scope of the fork is wider than the original package, this
+package will likely be renamed in the near future.**
 
 ## Install
 ```bash
