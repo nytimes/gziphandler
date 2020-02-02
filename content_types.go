@@ -49,7 +49,7 @@ type parsedContentType struct {
 }
 
 // equals returns whether this content type matches another content type.
-func (pct parsedContentType) equals(mediaType string, params map[string]string) bool {
+func (pct *parsedContentType) equals(mediaType string, params map[string]string) bool {
 	if pct.mediaType != mediaType {
 		return false
 	}
@@ -61,7 +61,7 @@ func (pct parsedContentType) equals(mediaType string, params map[string]string) 
 	return pct.equalsSlow(mediaType, params)
 }
 
-func (pct parsedContentType) equalsSlow(mediaType string, params map[string]string) bool {
+func (pct *parsedContentType) equalsSlow(mediaType string, params map[string]string) bool {
 	// if pct has any params, they must be identical to other's.
 	if len(pct.params) != len(params) {
 		return false
