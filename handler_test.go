@@ -23,6 +23,8 @@ const (
 )
 
 func TestParseEncodings(t *testing.T) {
+	t.Parallel()
+
 	examples := map[string]codings{
 
 		// Examples from RFC 2616
@@ -45,6 +47,8 @@ func TestParseEncodings(t *testing.T) {
 }
 
 func TestGzipHandler(t *testing.T) {
+	t.Parallel()
+
 	// This just exists to provide something for GzipHandler to wrap.
 	handler := newTestHandler(testBody)
 
@@ -157,6 +161,8 @@ func TestGzipHandler(t *testing.T) {
 }
 
 func TestGzipHandlerSmallBodyNoCompression(t *testing.T) {
+	t.Parallel()
+
 	handler := newTestHandler(smallTestBody)
 
 	req, _ := http.NewRequest("GET", "/whatever", nil)
@@ -175,6 +181,8 @@ func TestGzipHandlerSmallBodyNoCompression(t *testing.T) {
 }
 
 func TestGzipHandlerAlreadyCompressed(t *testing.T) {
+	t.Parallel()
+
 	handler := newTestHandler(testBody)
 
 	req, _ := http.NewRequest("GET", "/gzipped", nil)
@@ -186,6 +194,8 @@ func TestGzipHandlerAlreadyCompressed(t *testing.T) {
 }
 
 func TestNewGzipLevelHandler(t *testing.T) {
+	t.Parallel()
+
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, testBody)
@@ -211,6 +221,8 @@ func TestNewGzipLevelHandler(t *testing.T) {
 }
 
 func TestNewGzipLevelHandlerReturnsErrorForInvalidLevels(t *testing.T) {
+	t.Parallel()
+
 	var err error
 	_, err = Middleware(GzipCompressionLevel(-42))
 	assert.NotNil(t, err)
@@ -220,6 +232,8 @@ func TestNewGzipLevelHandlerReturnsErrorForInvalidLevels(t *testing.T) {
 }
 
 func TestGzipHandlerNoBody(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		statusCode      int
 		contentEncoding string
@@ -275,6 +289,8 @@ func TestGzipHandlerNoBody(t *testing.T) {
 }
 
 func TestGzipHandlerContentLength(t *testing.T) {
+	t.Parallel()
+
 	testBodyBytes := []byte(testBody)
 	tests := []struct {
 		bodyLen   int
@@ -347,11 +363,15 @@ func TestGzipHandlerContentLength(t *testing.T) {
 }
 
 func TestGzipHandlerMinSizeMustBePositive(t *testing.T) {
+	t.Parallel()
+
 	_, err := Middleware(MinSize(-1))
 	assert.Error(t, err)
 }
 
 func TestGzipHandlerMinSize(t *testing.T) {
+	t.Parallel()
+
 	responseLength := 0
 	b := []byte{'x'}
 
@@ -389,6 +409,8 @@ func TestGzipHandlerMinSize(t *testing.T) {
 }
 
 func TestGzipDoubleClose(t *testing.T) {
+	t.Parallel()
+
 	// reset the pool for the default compression so we can make sure duplicates
 	// aren't added back by double close
 	addGzipLevelPool(gzip.DefaultCompression)
@@ -428,6 +450,8 @@ func (w *panicOnSecondWriteHeaderWriter) WriteHeader(s int) {
 }
 
 func TestGzipHandlerDoubleWriteHeader(t *testing.T) {
+	t.Parallel()
+
 	mw, _ := Middleware()
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "15000")
@@ -468,6 +492,8 @@ func TestGzipHandlerDoubleWriteHeader(t *testing.T) {
 }
 
 func TestStatusCodes(t *testing.T) {
+	t.Parallel()
+
 	mw, _ := Middleware()
 	handler := mw(http.NotFoundHandler())
 	r := httptest.NewRequest("GET", "/", nil)
@@ -482,6 +508,8 @@ func TestStatusCodes(t *testing.T) {
 }
 
 func TestFlushBeforeWrite(t *testing.T) {
+	t.Parallel()
+
 	b := []byte(testBody)
 	mw, _ := Middleware()
 	handler := mw(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
@@ -501,6 +529,8 @@ func TestFlushBeforeWrite(t *testing.T) {
 }
 
 func TestImplementCloseNotifier(t *testing.T) {
+	t.Parallel()
+
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
 	mw, _ := Middleware()
@@ -511,6 +541,8 @@ func TestImplementCloseNotifier(t *testing.T) {
 }
 
 func TestImplementFlusherAndCloseNotifier(t *testing.T) {
+	t.Parallel()
+
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
 	mw, _ := Middleware()
@@ -523,6 +555,8 @@ func TestImplementFlusherAndCloseNotifier(t *testing.T) {
 }
 
 func TestNotImplementCloseNotifier(t *testing.T) {
+	t.Parallel()
+
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
 	mw, _ := Middleware()
@@ -551,6 +585,8 @@ func (m *mockRWCloseNotify) WriteHeader(int) {
 }
 
 func TestIgnoreSubsequentWriteHeader(t *testing.T) {
+	t.Parallel()
+
 	mw, _ := Middleware()
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
@@ -568,6 +604,8 @@ func TestIgnoreSubsequentWriteHeader(t *testing.T) {
 }
 
 func TestDontWriteWhenNotWrittenTo(t *testing.T) {
+	t.Parallel()
+
 	// When using gzip as middleware without ANY writes in the handler,
 	// ensure the gzip middleware doesn't touch the actual ResponseWriter
 	// either.
@@ -592,69 +630,71 @@ func TestDontWriteWhenNotWrittenTo(t *testing.T) {
 	}
 }
 
-var contentTypeTests = []struct {
-	name                 string
-	contentType          string
-	acceptedContentTypes []string
-	expectedGzip         bool
-}{
-	{
-		name:                 "Always gzip when content types are empty",
-		contentType:          "",
-		acceptedContentTypes: []string{},
-		expectedGzip:         true,
-	},
-	{
-		name:                 "MIME match",
-		contentType:          "application/json",
-		acceptedContentTypes: []string{"application/json"},
-		expectedGzip:         true,
-	},
-	{
-		name:                 "MIME no match",
-		contentType:          "text/xml",
-		acceptedContentTypes: []string{"application/json"},
-		expectedGzip:         false,
-	},
-	{
-		name:                 "MIME match with no other directive ignores non-MIME directives",
-		contentType:          "application/json; charset=utf-8",
-		acceptedContentTypes: []string{"application/json"},
-		expectedGzip:         true,
-	},
-	{
-		name:                 "MIME match with other directives requires all directives be equal, different charset",
-		contentType:          "application/json; charset=ascii",
-		acceptedContentTypes: []string{"application/json; charset=utf-8"},
-		expectedGzip:         false,
-	},
-	{
-		name:                 "MIME match with other directives requires all directives be equal, same charset",
-		contentType:          "application/json; charset=utf-8",
-		acceptedContentTypes: []string{"application/json; charset=utf-8"},
-		expectedGzip:         true,
-	},
-	{
-		name:                 "MIME match with other directives requires all directives be equal, missing charset",
-		contentType:          "application/json",
-		acceptedContentTypes: []string{"application/json; charset=ascii"},
-		expectedGzip:         false,
-	},
-	{
-		name:                 "MIME match case insensitive",
-		contentType:          "Application/Json",
-		acceptedContentTypes: []string{"application/json"},
-		expectedGzip:         true,
-	},
-	{
-		name:                 "MIME match ignore whitespace",
-		contentType:          "application/json;charset=utf-8",
-		acceptedContentTypes: []string{"application/json;            charset=utf-8"},
-		expectedGzip:         true,
-	},
-}
-
 func TestContentTypes(t *testing.T) {
+	t.Parallel()
+
+	var contentTypeTests = []struct {
+		name                 string
+		contentType          string
+		acceptedContentTypes []string
+		expectedGzip         bool
+	}{
+		{
+			name:                 "Always gzip when content types are empty",
+			contentType:          "",
+			acceptedContentTypes: []string{},
+			expectedGzip:         true,
+		},
+		{
+			name:                 "MIME match",
+			contentType:          "application/json",
+			acceptedContentTypes: []string{"application/json"},
+			expectedGzip:         true,
+		},
+		{
+			name:                 "MIME no match",
+			contentType:          "text/xml",
+			acceptedContentTypes: []string{"application/json"},
+			expectedGzip:         false,
+		},
+		{
+			name:                 "MIME match with no other directive ignores non-MIME directives",
+			contentType:          "application/json; charset=utf-8",
+			acceptedContentTypes: []string{"application/json"},
+			expectedGzip:         true,
+		},
+		{
+			name:                 "MIME match with other directives requires all directives be equal, different charset",
+			contentType:          "application/json; charset=ascii",
+			acceptedContentTypes: []string{"application/json; charset=utf-8"},
+			expectedGzip:         false,
+		},
+		{
+			name:                 "MIME match with other directives requires all directives be equal, same charset",
+			contentType:          "application/json; charset=utf-8",
+			acceptedContentTypes: []string{"application/json; charset=utf-8"},
+			expectedGzip:         true,
+		},
+		{
+			name:                 "MIME match with other directives requires all directives be equal, missing charset",
+			contentType:          "application/json",
+			acceptedContentTypes: []string{"application/json; charset=ascii"},
+			expectedGzip:         false,
+		},
+		{
+			name:                 "MIME match case insensitive",
+			contentType:          "Application/Json",
+			acceptedContentTypes: []string{"application/json"},
+			expectedGzip:         true,
+		},
+		{
+			name:                 "MIME match ignore whitespace",
+			contentType:          "application/json;charset=utf-8",
+			acceptedContentTypes: []string{"application/json;            charset=utf-8"},
+			expectedGzip:         true,
+		},
+	}
+
 	for _, tt := range contentTypeTests {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)

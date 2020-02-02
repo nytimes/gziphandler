@@ -4,6 +4,8 @@ import "net/http"
 import "testing"
 
 func TestAccepts(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		AcceptEncoding string
 		AcceptsType    acceptsType
