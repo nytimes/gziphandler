@@ -141,9 +141,7 @@ func (w *gzipResponseWriter) startBrotli() error {
 	// Set the Brotli header.
 	w.Header().Set(contentEncoding, "br")
 
-	// if the Content-Length is already set, then calls to Write on brotli
-	// will fail to set the Content-Length header since its already set
-	// See: https://github.com/golang/go/issues/14975.
+	// TODO: is this really required for brotli?
 	w.Header().Del(contentLength)
 
 	// Write the header to brotli response.
