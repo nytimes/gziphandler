@@ -399,7 +399,7 @@ func TestGzipHandlerMinSize(t *testing.T) {
 		t.Error("Expected uncompressed response, got compressed")
 	}
 
-	// Long response is not compressed
+	// Long response is compressed
 	responseLength = 128
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
