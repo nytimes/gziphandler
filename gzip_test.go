@@ -81,6 +81,21 @@ func TestGzipHandler(t *testing.T) {
 	assert.Equal(t, http.DetectContentType([]byte(testBody)), res3.Header().Get("Content-Type"))
 }
 
+func TestGzipHandlerNilContentType(t *testing.T) {
+	// This just exists to provide something for GzipHandler to wrap.
+	handler := newTestHandler(testBody)
+
+	// content-type header not set when provided nil
+
+	req, _ := http.NewRequest("GET", "/whatever", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	res := httptest.NewRecorder()
+	res.Header()["Content-Type"] = nil
+	handler.ServeHTTP(res, req)
+
+	assert.Empty(t, res.Header().Get("Content-Type"))
+}
+
 func TestGzipHandlerSmallBodyNoCompression(t *testing.T) {
 	handler := newTestHandler(smallTestBody)
 
