@@ -321,7 +321,7 @@ func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error
 		index := poolIndex(c.level)
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Add(vary, acceptEncoding)
+			w.Header().Set(vary, parseAndModifyVaryHeader(w))
 			if acceptsGzip(r) {
 				gw := &GzipResponseWriter{
 					ResponseWriter: w,
@@ -343,6 +343,21 @@ func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error
 			}
 		})
 	}, nil
+}
+
+func parseAndModifyVaryHeader(w http.ResponseWriter) string {
+	varyHeader := w.Header().Get(vary)
+	if varyHeader == acceptEncoding {
+		return acceptEncoding
+	}
+
+	if varyHeader != "" {
+		varyHeader += ","
+	}
+
+	varyHeader += acceptEncoding
+
+	return varyHeader
 }
 
 // Parsed representation of one of the inputs to ContentTypes.

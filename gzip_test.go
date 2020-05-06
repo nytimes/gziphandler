@@ -81,6 +81,20 @@ func TestGzipHandler(t *testing.T) {
 	assert.Equal(t, http.DetectContentType([]byte(testBody)), res3.Header().Get("Content-Type"))
 }
 
+func TestGzipHandlerExistingVaryHeader(t *testing.T) {
+	// This just exists to provide something for GzipHandler to wrap.
+	handler := newTestHandler(testBody)
+	req, _ := http.NewRequest("GET", "/whatever", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	res := httptest.NewRecorder()
+
+	// Set the Vary header to a pre-existing value.
+	res.Header().Set(vary, "Origin")
+	handler.ServeHTTP(res, req)
+
+	assert.Equal(t, res.Header().Get(vary), "Origin,"+acceptEncoding)
+}
+
 func TestGzipHandlerSmallBodyNoCompression(t *testing.T) {
 	handler := newTestHandler(smallTestBody)
 
