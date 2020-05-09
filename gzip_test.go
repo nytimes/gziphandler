@@ -604,6 +604,102 @@ func TestContentTypes(t *testing.T) {
 			assert.NotEqual(t, "gzip", res.Header.Get("Content-Encoding"), tt.name)
 		}
 	}
+
+	_, err := GzipHandlerWithOpts(ContentTypes([]string{"foo"}), ContentTypeExceptions([]string{"bar"}))
+	assert.EqualError(t, err, "ContentTypes and ContentTypeExceptions are mutually exclusive")
+}
+
+var contentTypeExceptionTests = []struct {
+	name                  string
+	contentType           string
+	contentTypeExceptions []string
+	expectedGzip          bool
+}{
+	{
+		name:                  "Always gzip when content types are empty",
+		contentType:           "",
+		contentTypeExceptions: []string{},
+		expectedGzip:          true,
+	},
+	{
+		name:                  "MIME match",
+		contentType:           "application/json",
+		contentTypeExceptions: []string{"application/json"},
+		expectedGzip:          false,
+	},
+	{
+		name:                  "MIME no match",
+		contentType:           "text/xml",
+		contentTypeExceptions: []string{"application/json"},
+		expectedGzip:          true,
+	},
+	{
+		name:                  "MIME match with no other directive ignores non-MIME directives",
+		contentType:           "application/json; charset=utf-8",
+		contentTypeExceptions: []string{"application/json"},
+		expectedGzip:          false,
+	},
+	{
+		name:                  "MIME match with other directives requires all directives be equal, different charset",
+		contentType:           "application/json; charset=ascii",
+		contentTypeExceptions: []string{"application/json; charset=utf-8"},
+		expectedGzip:          true,
+	},
+	{
+		name:                  "MIME match with other directives requires all directives be equal, same charset",
+		contentType:           "application/json; charset=utf-8",
+		contentTypeExceptions: []string{"application/json; charset=utf-8"},
+		expectedGzip:          false,
+	},
+	{
+		name:                  "MIME match with other directives requires all directives be equal, missing charset",
+		contentType:           "application/json",
+		contentTypeExceptions: []string{"application/json; charset=ascii"},
+		expectedGzip:          true,
+	},
+	{
+		name:                  "MIME match case insensitive",
+		contentType:           "Application/Json",
+		contentTypeExceptions: []string{"application/json"},
+		expectedGzip:          false,
+	},
+	{
+		name:                  "MIME match ignore whitespace",
+		contentType:           "application/json;charset=utf-8",
+		contentTypeExceptions: []string{"application/json;            charset=utf-8"},
+		expectedGzip:          false,
+	},
+}
+
+func TestContentTypeExceptions(t *testing.T) {
+	for _, tt := range contentTypeExceptionTests {
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", tt.contentType)
+			io.WriteString(w, testBody)
+		})
+
+		wrapper, err := GzipHandlerWithOpts(ContentTypeExceptions(tt.contentTypeExceptions))
+		if !assert.Nil(t, err, "NewGzipHandlerWithOpts returned error", tt.name) {
+			continue
+		}
+
+		req, _ := http.NewRequest("GET", "/whatever", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		resp := httptest.NewRecorder()
+		wrapper(handler).ServeHTTP(resp, req)
+		res := resp.Result()
+
+		assert.Equal(t, 200, res.StatusCode)
+		if tt.expectedGzip {
+			assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"), tt.name)
+		} else {
+			assert.NotEqual(t, "gzip", res.Header.Get("Content-Encoding"), tt.name)
+		}
+	}
+
+	_, err := GzipHandlerWithOpts(ContentTypes([]string{"foo"}), ContentTypeExceptions([]string{"bar"}))
+	assert.EqualError(t, err, "ContentTypes and ContentTypeExceptions are mutually exclusive")
 }
 
 // --------------------------------------------------------------------
