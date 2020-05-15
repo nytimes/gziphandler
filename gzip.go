@@ -39,7 +39,7 @@ const (
 // gzipWriterPools stores a sync.Pool for each compression level for reuse of
 // gzip.Writers. Use poolIndex to covert a compression level to an index into
 // gzipWriterPools.
-var gzipWriterPools [gzip.BestCompression - gzip.BestSpeed + 2]*sync.Pool
+var gzipWriterPools [gzip.BestCompression - gzip.BestSpeed + 2]sync.Pool
 
 func init() {
 	for i := gzip.BestSpeed; i <= gzip.BestCompression; i++ {
@@ -59,7 +59,7 @@ func poolIndex(level int) int {
 }
 
 func addLevelPool(level int) {
-	gzipWriterPools[poolIndex(level)] = &sync.Pool{
+	gzipWriterPools[poolIndex(level)] = sync.Pool{
 		New: func() interface{} {
 			// NewWriterLevel only returns error on a bad level, we are guaranteeing
 			// that this will be a valid level so it is okay to ignore the returned
