@@ -34,7 +34,7 @@ const (
 	// This is provided for two main reasons:
 	// - Compressing very small payloads (less than a few tens of bytes) may actual increase
 	//   their size.
-	// - Compressing small payloads may actually decrease end-to-end performanc due to the 
+	// - Compressing small payloads may actually decrease end-to-end performance due to the 
 	//   additional latency imposed by compressing and decompressing the payload, as well as
 	//   due to the contention on compute resources that may be otherwise used for other
 	//   purposes (e.g. decoding other payloads).
