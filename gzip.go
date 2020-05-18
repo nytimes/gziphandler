@@ -37,7 +37,8 @@ const (
 	// - Compressing small payloads may actually decrease end-to-end performance due to the 
 	//   additional latency imposed by compressing and decompressing the payload, as well as
 	//   due to the contention on compute resources that may be otherwise used for other
-	//   purposes (e.g. decoding other payloads).
+	//   purposes (e.g. decoding other payloads), not being offset by a decrease in data
+	//   transfer.
 	//
 	// As it should be clear given the two points above the optimal default minimum size
 	// depends on many factors, including the compute resources available for compression
@@ -49,7 +50,7 @@ const (
 	// 150 bytes and akamai 860 bytes, but both of these recommendations seems to have
 	// disappeared from their current documentation.
 	//
-	// Networks do not normally have "MTU-sized reserved slots" that can be exclsuively used
+	// Many networks do not have "MTU-sized reserved slots" that can be exclsuively used
 	// by a single packet at a time, so arguments for choosing a minimum compression size of
 	// "slightly less than 1 MTU" are groundless in most cases. Furthermore, there are
 	// precious few guarantees about MTUs on the internet, and "MTUs are 1500 bytes" is
