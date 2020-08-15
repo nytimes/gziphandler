@@ -2,7 +2,6 @@ package gziphandler // import "github.com/NYTimes/gziphandler"
 
 import (
 	"bufio"
-	"compress/gzip"
 	"fmt"
 	"io"
 	"mime"
@@ -11,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/klauspost/compress/gzip"
 )
 
 const (
