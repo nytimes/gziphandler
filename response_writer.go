@@ -21,12 +21,20 @@ type gzipResponseWriter struct {
 	config config
 	accept acceptsType
 
-	gw     io.WriteCloser
-	bw     io.WriteCloser
-	code   int    // Saves the WriteHeader value.
-	buf    []byte // Holds the first part of the write before reaching the minSize or the end of the write.
-	ignore bool   // If true, then we immediately passthru writes to the underlying ResponseWriter.
+	w          io.WriteCloser
+	writerType writerType
+	code       int    // Saves the WriteHeader value.
+	buf        []byte // Holds the first part of the write before reaching the minSize or the end of the write.
 }
+
+type writerType byte
+
+const (
+	noWriter writerType = iota
+	passthroughWriter
+	gzipWriter
+	brotliWriter
+)
 
 type gzipResponseWriterWithCloseNotify struct {
 	*gzipResponseWriter
@@ -38,15 +46,9 @@ func (w gzipResponseWriterWithCloseNotify) CloseNotify() <-chan bool {
 
 // Write appends data to the gzip writer.
 func (w *gzipResponseWriter) Write(b []byte) (int, error) {
-	if w.gw != nil {
-		// The GZIP responseWriter is already initialized: use it.
-		return w.gw.Write(b)
-	} else if w.bw != nil {
-		// The Brotli responseWriter is already initialized: use it.
-		return w.bw.Write(b)
-	} else if w.ignore {
-		// We have already decided not to use compression, immediately passthrough.
-		return w.ResponseWriter.Write(b)
+	if w.w != nil {
+		// The responseWriter is already initialized: use it.
+		return w.w.Write(b)
 	}
 
 	// Save the write into a buffer for later use in GZIP responseWriter (if content is long enough) or at close with regular responseWriter.
@@ -114,8 +116,9 @@ func (w *gzipResponseWriter) startGzip() error {
 	// write the gzip header even if nothing was ever written.
 	if len(w.buf) > 0 {
 		// Initialize the gzip response.
-		w.gw = w.config.gzipComp.Get(w.ResponseWriter, w.config.gzLevel)
-		n, err := w.gw.Write(w.buf)
+		w.w = w.config.gzipComp.Get(w.ResponseWriter, w.config.gzLevel)
+		w.writerType = gzipWriter
+		n, err := w.w.Write(w.buf)
 
 		// This should never happen (per io.Writer docs), but if the write didn't
 		// accept the entire buffer but returned no specific error, we have no clue
@@ -147,8 +150,9 @@ func (w *gzipResponseWriter) startBrotli() error {
 	// If there aren't any, we shouldn't initialize it yet because on Close it will
 	// write the brotli header even if nothing was ever written.
 	if len(w.buf) > 0 {
-		w.bw = w.config.brotliComp.Get(w.ResponseWriter, w.config.brLevel)
-		n, err := w.bw.Write(w.buf)
+		w.w = w.config.brotliComp.Get(w.ResponseWriter, w.config.brLevel)
+		w.writerType = brotliWriter
+		n, err := w.w.Write(w.buf)
 
 		// This should never happen (per io.Writer docs), but if the write didn't
 		// accept the entire buffer but returned no specific error, we have no clue
@@ -168,7 +172,7 @@ func (w *gzipResponseWriter) startPlain() error {
 		// Ensure that no other WriteHeader's happen
 		w.code = 0
 	}
-	w.ignore = true
+	w.writerType = passthroughWriter
 	// If Write was never called then don't call Write on the underlying ResponseWriter.
 	if w.buf == nil {
 		return nil
@@ -193,14 +197,13 @@ func (w *gzipResponseWriter) WriteHeader(code int) {
 
 // Close will close the gzip.Writer and will put it back in the gzipWriterPool.
 func (w *gzipResponseWriter) Close() error {
-	if w.ignore {
+	switch w.writerType {
+	case passthroughWriter:
 		return nil
-	} else if gw := w.gw; gw != nil {
-		w.gw = nil
+	case gzipWriter, brotliWriter:
+		gw := w.w
+		w.w = nil
 		return gw.Close()
-	} else if bw := w.bw; bw != nil {
-		w.bw = nil
-		return bw.Close()
 	}
 
 	// compression not triggered yet, write out regular response.
@@ -216,7 +219,7 @@ func (w *gzipResponseWriter) Close() error {
 // http.ResponseWriter if it is an http.Flusher. This makes gzipResponseWriter
 // an http.Flusher.
 func (w *gzipResponseWriter) Flush() {
-	if w.gw == nil && w.bw == nil && !w.ignore {
+	if w.w == nil {
 		// Only flush once startGzip, startBrotli or startPlain has been called.
 		//
 		// Flush is thus a no-op until we're certain whether a plain
@@ -224,13 +227,10 @@ func (w *gzipResponseWriter) Flush() {
 		return
 	}
 
-	if w.gw != nil {
-		if gw := w.gw.(custom.Flusher); gw != nil {
-			gw.Flush()
-		}
-	} else if w.bw != nil {
-		if bw := w.bw.(custom.Flusher); bw != nil {
-			bw.Flush()
+	switch w.writerType {
+	case gzipWriter, brotliWriter:
+		if fw, _ := w.w.(custom.Flusher); fw != nil {
+			fw.Flush()
 		}
 	}
 
