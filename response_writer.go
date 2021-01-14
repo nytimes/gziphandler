@@ -19,21 +19,14 @@ import (
 type gzipResponseWriter struct {
 	http.ResponseWriter
 
-	prefer  PreferType
-	accept  acceptsType
-	gzLevel int
-	brLevel int
-	gw      *gzip.Writer
-	bw      *brotli.Writer
+	config config
+	accept acceptsType
 
-	code int // Saves the WriteHeader value.
-
-	minSize int    // Specifies the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
-	buf     []byte // Holds the first part of the write before reaching the minSize or the end of the write.
-	ignore  bool   // If true, then we immediately passthru writes to the underlying ResponseWriter.
-
-	contentTypes []parsedContentType // Only compress if the response is one of these content-types. All are accepted if empty.
-	blacklist    bool
+	gw     *gzip.Writer
+	bw     *brotli.Writer
+	code   int    // Saves the WriteHeader value.
+	buf    []byte // Holds the first part of the write before reaching the minSize or the end of the write.
+	ignore bool   // If true, then we immediately passthru writes to the underlying ResponseWriter.
 }
 
 type gzipResponseWriterWithCloseNotify struct {
@@ -67,19 +60,19 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 		ce    = w.Header().Get(contentEncoding)
 	)
 	// Only continue if they didn't already choose an encoding or a known unhandled content length or type.
-	if ce == "" && (cl == 0 || cl >= w.minSize) && (ct == "" || handleContentTypes(w.contentTypes, w.contentTypes, w.blacklist, ct, w.prefer, w.accept) != handleNone) {
+	if ce == "" && (cl == 0 || cl >= w.config.minSize) && (ct == "" || handleContentTypes(w.config.contentTypes, w.config.contentTypes, w.config.blacklist, ct, w.config.prefer, w.accept) != handleNone) {
 		// If the current buffer is less than minSize and a Content-Length isn't set, then wait until we have more data.
-		if len(w.buf) < w.minSize && cl == 0 {
+		if len(w.buf) < w.config.minSize && cl == 0 {
 			return len(b), nil
 		}
 		// If the Content-Length is larger than minSize or the current buffer is larger than minSize, then continue.
-		if cl >= w.minSize || len(w.buf) >= w.minSize {
+		if cl >= w.config.minSize || len(w.buf) >= w.config.minSize {
 			// If a Content-Type wasn't specified, infer it from the current buffer.
 			if ct == "" {
 				ct = http.DetectContentType(w.buf)
 				w.Header().Set(contentType, ct)
 			}
-			handle := handleContentTypes(w.contentTypes, w.contentTypes, w.blacklist, ct, w.prefer, w.accept)
+			handle := handleContentTypes(w.config.contentTypes, w.config.contentTypes, w.config.blacklist, ct, w.config.prefer, w.accept)
 			if handle == handleGzip {
 				if err := w.startGzip(); err != nil {
 					return 0, err
@@ -122,7 +115,7 @@ func (w *gzipResponseWriter) startGzip() error {
 	// write the gzip header even if nothing was ever written.
 	if len(w.buf) > 0 {
 		// Initialize the GZIP response.
-		w.gw = getGzipWriter(w.ResponseWriter, w.gzLevel)
+		w.gw = getGzipWriter(w.ResponseWriter, w.config.gzLevel)
 		n, err := w.gw.Write(w.buf)
 
 		// This should never happen (per io.Writer docs), but if the write didn't
@@ -155,7 +148,7 @@ func (w *gzipResponseWriter) startBrotli() error {
 	// If there aren't any, we shouldn't initialize it yet because on Close it will
 	// write the brotli header even if nothing was ever written.
 	if len(w.buf) > 0 {
-		w.bw = getBrotliWriter(w.ResponseWriter, w.brLevel)
+		w.bw = getBrotliWriter(w.ResponseWriter, w.config.brLevel)
 		n, err := w.bw.Write(w.buf)
 
 		// This should never happen (per io.Writer docs), but if the write didn't
@@ -205,12 +198,12 @@ func (w *gzipResponseWriter) Close() error {
 		return nil
 	} else if w.gw != nil {
 		err := w.gw.Close()
-		putGzipWriter(w.gw, w.gzLevel)
+		putGzipWriter(w.gw, w.config.gzLevel)
 		w.gw = nil
 		return err
 	} else if w.bw != nil {
 		err := w.bw.Close()
-		putBrotliWriter(w.bw, w.brLevel)
+		putBrotliWriter(w.bw, w.config.brLevel)
 		w.bw = nil
 		return err
 	}

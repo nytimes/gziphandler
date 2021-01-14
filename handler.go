@@ -31,7 +31,7 @@ const (
 // It is possible to pass one or more options to modify the middleware configuration.
 // An error will be returned if invalid options are given.
 func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
-	c := &config{
+	c := config{
 		gzLevel: gzip.DefaultCompression,
 		brLevel: brotliDefaultCompression,
 		prefer:  PreferClientThenBrotli,
@@ -39,7 +39,7 @@ func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
 	}
 
 	for _, o := range opts {
-		o(c)
+		o(&c)
 	}
 
 	if err := c.validate(); err != nil {
@@ -53,13 +53,8 @@ func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
 			if ac := acceptsCompression(r); ac != acceptsNone {
 				gw := &gzipResponseWriter{
 					ResponseWriter: w,
-					gzLevel:        c.gzLevel,
-					brLevel:        c.brLevel,
-					minSize:        c.minSize,
-					contentTypes:   c.contentTypes,
-					blacklist:      c.blacklist,
+					config:         c,
 					accept:         ac,
-					prefer:         c.prefer,
 				}
 				defer gw.Close()
 
@@ -77,10 +72,10 @@ func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
 
 // Used for functional configuration.
 type config struct {
-	minSize      int
 	gzLevel      int
 	brLevel      int
-	contentTypes []parsedContentType
+	minSize      int                 // Specifies the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
+	contentTypes []parsedContentType // Only compress if the response is one of these content-types. All are accepted if empty.
 	blacklist    bool
 	prefer       PreferType
 }
