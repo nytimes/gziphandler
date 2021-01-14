@@ -27,6 +27,12 @@ type gzipResponseWriter struct {
 	buf        []byte // Holds the first part of the write before reaching the minSize or the end of the write.
 }
 
+var (
+	_ io.WriteCloser = &gzipResponseWriter{}
+	_ http.Flusher   = &gzipResponseWriter{}
+	_ http.Hijacker  = &gzipResponseWriter{}
+)
+
 type writerType byte
 
 const (
@@ -43,6 +49,12 @@ type gzipResponseWriterWithCloseNotify struct {
 func (w gzipResponseWriterWithCloseNotify) CloseNotify() <-chan bool {
 	return w.ResponseWriter.(http.CloseNotifier).CloseNotify()
 }
+
+var (
+	_ io.WriteCloser = gzipResponseWriterWithCloseNotify{}
+	_ http.Flusher   = gzipResponseWriterWithCloseNotify{}
+	_ http.Hijacker  = gzipResponseWriterWithCloseNotify{}
+)
 
 // Write appends data to the gzip writer.
 func (w *gzipResponseWriter) Write(b []byte) (int, error) {
@@ -74,13 +86,8 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 				w.Header().Set(contentType, ct)
 			}
 			handle := handleContentTypes(w.config.contentTypes, w.config.contentTypes, w.config.blacklist, ct, w.config.prefer, w.accept)
-			if handle == handleGzip {
-				if err := w.startGzip(); err != nil {
-					return 0, err
-				}
-				return len(b), nil
-			} else if handle == handleBrotli {
-				if err := w.startBrotli(); err != nil {
+			if handle == handleGzip || handle == handleBrotli {
+				if err := w.startCompress(handle); err != nil {
 					return 0, err
 				}
 				return len(b), nil
@@ -94,10 +101,15 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-// startGzip initializes a GZIP writer and writes the buffer.
-func (w *gzipResponseWriter) startGzip() error {
-	// Set the GZIP header.
-	w.Header().Set(contentEncoding, "gzip")
+// startCompress initializes a compressing writer and writes the buffer.
+func (w *gzipResponseWriter) startCompress(h handleType) error {
+	if h == handleGzip {
+		w.Header().Set(contentEncoding, "gzip")
+	} else if h == handleBrotli {
+		w.Header().Set(contentEncoding, "br")
+	} else {
+		panic("unknown handleType")
+	}
 
 	// if the Content-Length is already set, then calls to Write on gzip
 	// will fail to set the Content-Length header since its already set
@@ -115,43 +127,14 @@ func (w *gzipResponseWriter) startGzip() error {
 	// If there aren't any, we shouldn't initialize it yet because on Close it will
 	// write the gzip header even if nothing was ever written.
 	if len(w.buf) > 0 {
-		// Initialize the gzip response.
-		w.w = w.config.gzipComp.Get(w.ResponseWriter, w.config.gzLevel)
-		w.writerType = gzipWriter
-		n, err := w.w.Write(w.buf)
-
-		// This should never happen (per io.Writer docs), but if the write didn't
-		// accept the entire buffer but returned no specific error, we have no clue
-		// what's going on, so abort just to be safe.
-		if err == nil && n < len(w.buf) {
-			err = io.ErrShortWrite
+		if h == handleGzip {
+			w.w = w.config.gzipComp.Get(w.ResponseWriter, w.config.gzLevel)
+			w.writerType = gzipWriter
+		} else if h == handleBrotli {
+			w.w = w.config.brotliComp.Get(w.ResponseWriter, w.config.brLevel)
+			w.writerType = brotliWriter
 		}
-		return err
-	}
-	return nil
-}
 
-// startBrotli initializes a Brotli writer and writes the buffer.
-func (w *gzipResponseWriter) startBrotli() error {
-	// Set the Brotli header.
-	w.Header().Set(contentEncoding, "br")
-
-	// TODO: is this really required for brotli?
-	w.Header().Del(contentLength)
-
-	// Write the header to brotli response.
-	if w.code != 0 {
-		w.ResponseWriter.WriteHeader(w.code)
-		// Ensure that no other WriteHeader's happen
-		w.code = 0
-	}
-
-	// Initialize and flush the buffer into the brotli response if there are any bytes.
-	// If there aren't any, we shouldn't initialize it yet because on Close it will
-	// write the brotli header even if nothing was ever written.
-	if len(w.buf) > 0 {
-		w.w = w.config.brotliComp.Get(w.ResponseWriter, w.config.brLevel)
-		w.writerType = brotliWriter
 		n, err := w.w.Write(w.buf)
 
 		// This should never happen (per io.Writer docs), but if the write didn't
@@ -201,6 +184,9 @@ func (w *gzipResponseWriter) Close() error {
 	case passthroughWriter:
 		return nil
 	case gzipWriter, brotliWriter:
+		if w.w == nil {
+			return nil
+		}
 		gw := w.w
 		w.w = nil
 		return gw.Close()
@@ -247,6 +233,3 @@ func (w *gzipResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	}
 	return nil, nil, fmt.Errorf("http.Hijacker interface is not supported")
 }
-
-// verify Hijacker interface implementation
-var _ http.Hijacker = &gzipResponseWriter{}

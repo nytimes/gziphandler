@@ -35,7 +35,7 @@ const (
 	priorityBrotli
 )
 
-// returns true if we should try gzip first
+// returns which scheme we should try first
 func (p PreferType) priorityFor(a acceptsType) priorityType {
 	if p == PreferClientThenGzip || p == PreferClientThenBrotli {
 		switch a {
