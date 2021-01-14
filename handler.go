@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/CAFxX/gziphandler/custom"
 	"github.com/andybalholm/brotli"
 )
 
@@ -78,6 +79,8 @@ type config struct {
 	contentTypes []parsedContentType // Only compress if the response is one of these content-types. All are accepted if empty.
 	blacklist    bool
 	prefer       PreferType
+	gzipComp     custom.Compressor
+	brotliComp   custom.Compressor
 }
 
 func (c *config) validate() error {
@@ -129,5 +132,19 @@ func GzipCompressionLevel(level int) Option {
 func BrotliCompressionLevel(level int) Option {
 	return func(c *config) {
 		c.brLevel = level
+	}
+}
+
+// GzipCompressor is an option to specify a custom compressor factory for Gzip.
+func GzipCompressor(g custom.Compressor) Option {
+	return func(c *config) {
+		c.gzipComp = g
+	}
+}
+
+// BrotliCompressor is an option to specify a custom compressor factory for Brotli.
+func BrotliCompressor(b custom.Compressor) Option {
+	return func(c *config) {
+		c.brotliComp = b
 	}
 }

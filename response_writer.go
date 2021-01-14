@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/CAFxX/gziphandler/custom"
 	"github.com/andybalholm/brotli"
 )
 
@@ -22,8 +23,8 @@ type gzipResponseWriter struct {
 	config config
 	accept acceptsType
 
-	gw     *gzip.Writer
-	bw     *brotli.Writer
+	gw     io.WriteCloser
+	bw     io.WriteCloser
 	code   int    // Saves the WriteHeader value.
 	buf    []byte // Holds the first part of the write before reaching the minSize or the end of the write.
 	ignore bool   // If true, then we immediately passthru writes to the underlying ResponseWriter.
@@ -114,8 +115,12 @@ func (w *gzipResponseWriter) startGzip() error {
 	// If there aren't any, we shouldn't initialize it yet because on Close it will
 	// write the gzip header even if nothing was ever written.
 	if len(w.buf) > 0 {
-		// Initialize the GZIP response.
-		w.gw = getGzipWriter(w.ResponseWriter, w.config.gzLevel)
+		// Initialize the gzip response.
+		if w.config.gzipComp != nil {
+			w.gw = w.config.gzipComp.Get(w.ResponseWriter, w.config.gzLevel)
+		} else {
+			w.gw = getGzipWriter(w.ResponseWriter, w.config.gzLevel)
+		}
 		n, err := w.gw.Write(w.buf)
 
 		// This should never happen (per io.Writer docs), but if the write didn't
@@ -148,7 +153,11 @@ func (w *gzipResponseWriter) startBrotli() error {
 	// If there aren't any, we shouldn't initialize it yet because on Close it will
 	// write the brotli header even if nothing was ever written.
 	if len(w.buf) > 0 {
-		w.bw = getBrotliWriter(w.ResponseWriter, w.config.brLevel)
+		if w.config.brotliComp != nil {
+			w.bw = w.config.brotliComp.Get(w.ResponseWriter, w.config.brLevel)
+		} else {
+			w.bw = getBrotliWriter(w.ResponseWriter, w.config.brLevel)
+		}
 		n, err := w.bw.Write(w.buf)
 
 		// This should never happen (per io.Writer docs), but if the write didn't
@@ -198,17 +207,21 @@ func (w *gzipResponseWriter) Close() error {
 		return nil
 	} else if w.gw != nil {
 		err := w.gw.Close()
-		putGzipWriter(w.gw, w.config.gzLevel)
+		if w.config.gzipComp == nil {
+			putGzipWriter(w.gw.(*gzip.Writer), w.config.gzLevel)
+		}
 		w.gw = nil
 		return err
 	} else if w.bw != nil {
 		err := w.bw.Close()
-		putBrotliWriter(w.bw, w.config.brLevel)
+		if w.config.brotliComp == nil {
+			putBrotliWriter(w.bw.(*brotli.Writer), w.config.brLevel)
+		}
 		w.bw = nil
 		return err
 	}
 
-	// GZIP not triggered yet, write out regular response.
+	// compression not triggered yet, write out regular response.
 	err := w.startPlain()
 	// Returns the error if any at write.
 	if err != nil {
@@ -230,9 +243,13 @@ func (w *gzipResponseWriter) Flush() {
 	}
 
 	if w.gw != nil {
-		w.gw.Flush()
+		if gw := w.gw.(custom.Flusher); gw != nil {
+			gw.Flush()
+		}
 	} else if w.bw != nil {
-		w.bw.Flush()
+		if bw := w.bw.(custom.Flusher); bw != nil {
+			bw.Flush()
+		}
 	}
 
 	if fw, ok := w.ResponseWriter.(http.Flusher); ok {
