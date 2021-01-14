@@ -33,10 +33,12 @@ const (
 // An error will be returned if invalid options are given.
 func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
 	c := config{
-		gzLevel: gzip.DefaultCompression,
-		brLevel: brotliDefaultCompression,
-		prefer:  PreferClientThenBrotli,
-		minSize: DefaultMinSize,
+		gzLevel:    gzip.DefaultCompression,
+		brLevel:    brotliDefaultCompression,
+		prefer:     PreferClientThenBrotli,
+		minSize:    DefaultMinSize,
+		gzipComp:   DefaultGzipCompressor{},
+		brotliComp: DefaultBrotliCompressor{},
 	}
 
 	for _, o := range opts {

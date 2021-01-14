@@ -40,3 +40,20 @@ func putBrotliWriter(bw *brotli.Writer, level int) {
 	bw.Reset(nil) // avoid keeping writer alive
 	brotliWriterPools[brotliPoolIndex(level)].Put(bw)
 }
+
+type DefaultBrotliCompressor struct{}
+
+func (_ DefaultBrotliCompressor) Get(w io.Writer, level int) io.WriteCloser {
+	return DefaultBrotliWriter{getBrotliWriter(w, level), level}
+}
+
+type DefaultBrotliWriter struct {
+	*brotli.Writer
+	level int
+}
+
+func (w DefaultBrotliWriter) Close() error {
+	err := w.Writer.Close()
+	putBrotliWriter(w.Writer, w.level)
+	return err
+}

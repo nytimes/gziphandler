@@ -54,3 +54,20 @@ func putGzipWriter(gw *gzip.Writer, level int) {
 	gw.Reset(nil)
 	gzipWriterPools[gzipPoolIndex(level)].Put(gw)
 }
+
+type DefaultGzipCompressor struct{}
+
+func (_ DefaultGzipCompressor) Get(w io.Writer, level int) io.WriteCloser {
+	return DefaultGzipWriter{getGzipWriter(w, level), level}
+}
+
+type DefaultGzipWriter struct {
+	*gzip.Writer
+	level int
+}
+
+func (w DefaultGzipWriter) Close() error {
+	err := w.Writer.Close()
+	putGzipWriter(w.Writer, w.level)
+	return err
+}

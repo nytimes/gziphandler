@@ -2,7 +2,6 @@ package gziphandler
 
 import (
 	"bufio"
-	"compress/gzip"
 	"fmt"
 	"io"
 	"net"
@@ -10,7 +9,6 @@ import (
 	"strconv"
 
 	"github.com/CAFxX/gziphandler/custom"
-	"github.com/andybalholm/brotli"
 )
 
 // gzipResponseWriter provides an http.ResponseWriter interface, which gzips
@@ -116,11 +114,7 @@ func (w *gzipResponseWriter) startGzip() error {
 	// write the gzip header even if nothing was ever written.
 	if len(w.buf) > 0 {
 		// Initialize the gzip response.
-		if w.config.gzipComp != nil {
-			w.gw = w.config.gzipComp.Get(w.ResponseWriter, w.config.gzLevel)
-		} else {
-			w.gw = getGzipWriter(w.ResponseWriter, w.config.gzLevel)
-		}
+		w.gw = w.config.gzipComp.Get(w.ResponseWriter, w.config.gzLevel)
 		n, err := w.gw.Write(w.buf)
 
 		// This should never happen (per io.Writer docs), but if the write didn't
@@ -153,11 +147,7 @@ func (w *gzipResponseWriter) startBrotli() error {
 	// If there aren't any, we shouldn't initialize it yet because on Close it will
 	// write the brotli header even if nothing was ever written.
 	if len(w.buf) > 0 {
-		if w.config.brotliComp != nil {
-			w.bw = w.config.brotliComp.Get(w.ResponseWriter, w.config.brLevel)
-		} else {
-			w.bw = getBrotliWriter(w.ResponseWriter, w.config.brLevel)
-		}
+		w.bw = w.config.brotliComp.Get(w.ResponseWriter, w.config.brLevel)
 		n, err := w.bw.Write(w.buf)
 
 		// This should never happen (per io.Writer docs), but if the write didn't
@@ -205,20 +195,12 @@ func (w *gzipResponseWriter) WriteHeader(code int) {
 func (w *gzipResponseWriter) Close() error {
 	if w.ignore {
 		return nil
-	} else if w.gw != nil {
-		err := w.gw.Close()
-		if w.config.gzipComp == nil {
-			putGzipWriter(w.gw.(*gzip.Writer), w.config.gzLevel)
-		}
+	} else if gw := w.gw; gw != nil {
 		w.gw = nil
-		return err
-	} else if w.bw != nil {
-		err := w.bw.Close()
-		if w.config.brotliComp == nil {
-			putBrotliWriter(w.bw.(*brotli.Writer), w.config.brLevel)
-		}
+		return gw.Close()
+	} else if bw := w.bw; bw != nil {
 		w.bw = nil
-		return err
+		return bw.Close()
 	}
 
 	// compression not triggered yet, write out regular response.
