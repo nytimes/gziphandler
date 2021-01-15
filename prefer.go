@@ -1,5 +1,7 @@
 package gziphandler
 
+import "sort"
+
 // Prefer controls the behavior of the middleware in case both Gzip and Brotli
 // can be used to compress a response (i.e. in case the client supports both
 // encodings, and the MIME type of the response is allowed for both encodings).
@@ -12,46 +14,52 @@ func Prefer(prefer PreferType) Option {
 
 // PreferType allows to control the choice of compression algorithm when
 // multiple algorithms are allowed by both client and server.
-type PreferType int
+type PreferType byte
 
 const (
-	// PreferGzip uses Gzip if the client supports both Brotli and Gzip.
-	PreferGzip PreferType = iota
+	// PreferServer prefers compressors in the order specified on the server.
+	// If two or more compressors have the same priority on the server, the client preference is taken into consideration.
+	// If both server and client do no specify a preference between two or more compressors, the order is determined by the name of the encoding.
+	// PreferServer is the default.
+	PreferServer PreferType = iota
 
-	// PreferBrotli uses Brotli if the client supports both Brotli and Gzip.
-	PreferBrotli
-
-	// PreferClientThenGzip uses the client preference, or Gzip if no preference is specified.
-	PreferClientThenGzip
-
-	// PreferClientThenBrotli uses the client preference, or Brotli if no preference is specified.
-	PreferClientThenBrotli
+	// PreferClient prefers compressors in the order specified by the client.
+	// If two or more compressors have the same priority according to the client, the server priority is taken into consideration.
+	// If both server and client do no specify a preference between two or more compressors, the order is determined by the name of the encoding.
+	PreferClient
 )
 
-type priorityType int
-
-const (
-	priorityGzip priorityType = iota
-	priorityBrotli
-)
-
-// returns which scheme we should try first
-func (p PreferType) priorityFor(a acceptsType) priorityType {
-	if p == PreferClientThenGzip || p == PreferClientThenBrotli {
-		switch a {
-		case acceptsBrotliThenGzip, acceptsBrotli:
-			return priorityBrotli
-		case acceptsGzipThenBrotli, acceptsGzip:
-			return priorityGzip
-		case acceptsGzipAndBrotli:
-			if p == PreferClientThenGzip {
-				return priorityGzip
+func preferredEncoding(accept codings, comps comps, common []string, prefer PreferType) string {
+	if len(common) == 0 {
+		panic("no common encoding")
+	}
+	switch prefer {
+	case PreferServer:
+		sort.Slice(common, func(i, j int) bool {
+			ci, cj := comps[common[i]].priority, comps[common[j]].priority
+			if ci != cj {
+				return ci > cj
 			}
-			return priorityBrotli
-		}
+			ai, aj := accept[common[i]], accept[common[j]]
+			if ai != aj {
+				return ai > aj
+			}
+			return common[i] > common[j]
+		})
+	case PreferClient:
+		sort.Slice(common, func(i, j int) bool {
+			ai, aj := accept[common[i]], accept[common[j]]
+			if ai != aj {
+				return ai > aj
+			}
+			ci, cj := comps[common[i]].priority, comps[common[j]].priority
+			if ci != cj {
+				return ci > cj
+			}
+			return common[i] > common[j]
+		})
+	default:
+		panic("unknown prefer type")
 	}
-	if p == PreferGzip {
-		return priorityGzip
-	}
-	return priorityBrotli
+	return common[0]
 }

@@ -1,58 +1,62 @@
 package gziphandler
 
-import "net/http"
-import "testing"
+import (
+	"fmt"
+	"io"
+	"sort"
+	"testing"
 
-func TestAccepts(t *testing.T) {
+	"github.com/stretchr/testify/assert"
+)
+
+func TestAcceptedCompression(t *testing.T) {
 	t.Parallel()
-
 	cases := []struct {
-		AcceptEncoding string
-		AcceptsType    acceptsType
+		accept        codings
+		onlyGzip      []string
+		onlyBrotli    []string
+		gzipAndBrotli []string
 	}{
-		{"", acceptsNone},
-		{"bazinga", acceptsNone},
-		{"identity", acceptsNone},
-		{"deflate", acceptsNone},
-		// This is not really correct according to
-		// https://tools.ietf.org/html/rfc7231#section-5.3.4
-		// but it's a safe choice.
-		{"*", acceptsNone},
-
-		{"gzip", acceptsGzip},
-		{"gzip,bazinga", acceptsGzip},
-		{"gzip;q=1", acceptsGzip},
-		{"gzip;q=0.5", acceptsGzip},
-		{"gzip;q=0", acceptsNone},
-
-		{"br", acceptsBrotli},
-		{"br,identity", acceptsBrotli},
-		{"br;q=1", acceptsBrotli},
-		{"br;q=0.5", acceptsBrotli},
-		{"br;q=0", acceptsNone},
-
-		{"br,gzip", acceptsGzipAndBrotli},
-		{"gzip,br", acceptsGzipAndBrotli},
-		{"gzip,br,identity", acceptsGzipAndBrotli},
-		{"gzip;q=1,br;q=1", acceptsGzipAndBrotli},
-		{"gzip;q=0.5,br;q=0.5", acceptsGzipAndBrotli},
-		{"gzip;q=0,br;q=0", acceptsNone},
-
-		{"gzip;q=1,br;q=0.5", acceptsGzipThenBrotli},
-		{"gzip;q=0.5,br;q=0", acceptsGzip},
-
-		{"gzip;q=0.5,br;q=1", acceptsBrotliThenGzip},
-		{"gzip;q=0,br;q=0.5", acceptsBrotli},
+		{codings{}, nil, nil, nil},
+		{codings{"identity": 1}, nil, nil, nil},
+		{codings{"yadda": 1}, nil, nil, nil},
+		{codings{"gzip": 1}, []string{"gzip"}, nil, []string{"gzip"}},
+		{codings{"gzip": 0.5}, []string{"gzip"}, nil, []string{"gzip"}},
+		{codings{"gzip_0": 1}, nil, nil, nil},
+		{codings{"gzip": 1, "identity": 1}, []string{"gzip"}, nil, []string{"gzip"}},
+		{codings{"gzip": 0}, nil, nil, nil},
+		{codings{"br": 1}, nil, []string{"br"}, []string{"br"}},
+		{codings{"gzip": 1, "br": 1}, []string{"gzip"}, []string{"br"}, []string{"gzip", "br"}},
+		{codings{"gzip": 1, "br": 0.5}, []string{"gzip"}, []string{"br"}, []string{"gzip", "br"}},
+		{codings{"gzip": 1, "br": 0}, []string{"gzip"}, nil, []string{"gzip"}},
 	}
-
+	onlyGzip := comps{"gzip": comp{comp: fakeCompressor{}}}
+	onlyBrotli := comps{"br": comp{comp: fakeCompressor{}}}
+	gzipAndBrotli := comps{"gzip": comp{comp: fakeCompressor{}}, "br": comp{comp: fakeCompressor{}}}
 	for _, c := range cases {
-		t.Run(c.AcceptEncoding, func(t *testing.T) {
-			r, _ := http.NewRequest("GET", "/", nil)
-			r.Header.Set("Accept-Encoding", c.AcceptEncoding)
-			a := acceptsCompression(r)
-			if a != c.AcceptsType {
-				t.Fatalf("got %q, want %q", a, c.AcceptsType)
-			}
+		t.Run(fmt.Sprintf("%v", c.accept), func(t *testing.T) {
+			t.Run("onlyGzip", func(t *testing.T) {
+				a := acceptedCompression(c.accept, onlyGzip)
+				sort.Strings(a)
+				sort.Strings(c.onlyGzip)
+				assert.Equal(t, a, c.onlyGzip)
+			})
+			t.Run("onlyBrotli", func(t *testing.T) {
+				a := acceptedCompression(c.accept, onlyBrotli)
+				sort.Strings(a)
+				sort.Strings(c.onlyBrotli)
+				assert.Equal(t, a, c.onlyBrotli)
+			})
+			t.Run("gzipAndBrotli", func(t *testing.T) {
+				a := acceptedCompression(c.accept, gzipAndBrotli)
+				sort.Strings(a)
+				sort.Strings(c.gzipAndBrotli)
+				assert.Equal(t, a, c.gzipAndBrotli)
+			})
 		})
 	}
 }
+
+type fakeCompressor struct{}
+
+func (fakeCompressor) Get(_ io.Writer) io.WriteCloser { return nil }

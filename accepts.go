@@ -3,7 +3,6 @@ package gziphandler
 import (
 	"fmt"
 	"math"
-	"net/http"
 	"strconv"
 	"strings"
 )
@@ -15,43 +14,24 @@ const (
 	defaultQValue = 1.0
 )
 
-type acceptsType int
-
-const (
-	acceptsNone acceptsType = iota
-	acceptsGzip
-	acceptsBrotli
-	acceptsGzipAndBrotli
-	acceptsGzipThenBrotli // client prefers Gzip
-	acceptsBrotliThenGzip // client prefers Brotli
-)
-
-func (a acceptsType) gzip() bool {
-	return a == acceptsGzip || a == acceptsGzipAndBrotli || a == acceptsGzipThenBrotli || a == acceptsBrotliThenGzip
-}
-
-func (a acceptsType) brotli() bool {
-	return a == acceptsBrotli || a == acceptsGzipAndBrotli || a == acceptsGzipThenBrotli || a == acceptsBrotliThenGzip
-}
-
-// acceptsCompression returns which kind of compressions the client will accept.
-func acceptsCompression(r *http.Request) acceptsType {
-	acceptedEncodings, _ := parseEncodings(r.Header.Get(acceptEncoding))
-	gzip, br := acceptedEncodings["gzip"], acceptedEncodings["br"]
-	switch {
-	case gzip > 0 && br > 0 && br > gzip:
-		return acceptsBrotliThenGzip
-	case gzip > 0 && br > 0 && br < gzip:
-		return acceptsGzipThenBrotli
-	case gzip > 0 && br > 0 && br == gzip:
-		return acceptsGzipAndBrotli
-	case gzip > 0 && br == 0:
-		return acceptsGzip
-	case gzip == 0 && br > 0:
-		return acceptsBrotli
-	default:
-		return acceptsNone
+// acceptedCompression returns the list of common compression scheme supported by client and server.
+func acceptedCompression(accept codings, comps comps) []string {
+	var s []string
+	// pick smallest N to do O(N) iterations
+	if len(accept) < len(comps) {
+		for k, v := range accept {
+			if v > 0 && comps[k].comp != nil {
+				s = append(s, k)
+			}
+		}
+	} else {
+		for k, v := range comps {
+			if v.comp != nil && accept[k] > 0 {
+				s = append(s, k)
+			}
+		}
 	}
+	return s
 }
 
 // parseEncodings attempts to parse a list of codings, per RFC 2616, as might

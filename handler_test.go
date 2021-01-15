@@ -90,7 +90,7 @@ func TestGzipHandler(t *testing.T) {
 		assert.Equal(t, 200, res.StatusCode)
 		assert.Equal(t, "br", res.Header.Get("Content-Encoding"))
 		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
-		assert.Equal(t, brotliStrLevel(testBody, brotliDefaultCompression), resp.Body.Bytes())
+		assert.Equal(t, brotliStrLevel(testBody, brotli.DefaultCompression), resp.Body.Bytes())
 	}
 
 	// same, but with accept-encoding:gzip,br (br wins)
@@ -104,15 +104,15 @@ func TestGzipHandler(t *testing.T) {
 		assert.Equal(t, 200, res.StatusCode)
 		assert.Equal(t, "br", res.Header.Get("Content-Encoding"))
 		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
-		assert.Equal(t, brotliStrLevel(testBody, brotliDefaultCompression), resp.Body.Bytes())
+		assert.Equal(t, brotliStrLevel(testBody, brotli.DefaultCompression), resp.Body.Bytes())
 	}
 
-	// same, but with accept-encoding:gzip,br and PreferGzip (gzip wins)
+	// same, but with accept-encoding:gzip,br;q=0.5 and PreferClient (gzip wins)
 	{
 		req, _ := http.NewRequest("GET", "/whatever", nil)
-		req.Header.Set("Accept-Encoding", "gzip,br")
+		req.Header.Set("Accept-Encoding", "gzip,br;q=0.5")
 		resp := httptest.NewRecorder()
-		newTestHandler(testBody, Prefer(PreferGzip)).ServeHTTP(resp, req)
+		newTestHandler(testBody, Prefer(PreferClient)).ServeHTTP(resp, req)
 		res := resp.Result()
 
 		assert.Equal(t, 200, res.StatusCode)
@@ -121,42 +121,18 @@ func TestGzipHandler(t *testing.T) {
 		assert.Equal(t, gzipStrLevel(testBody, gzip.DefaultCompression), resp.Body.Bytes())
 	}
 
-	// same, but with accept-encoding:gzip,br;q=0.5 (gzip wins)
+	// same, but with accept-encoding:gzip,br;q=0.5 and PreferServer (brotli wins)
 	{
 		req, _ := http.NewRequest("GET", "/whatever", nil)
 		req.Header.Set("Accept-Encoding", "gzip,br;q=0.5")
 		resp := httptest.NewRecorder()
-		handler.ServeHTTP(resp, req)
-		res := resp.Result()
-
-		assert.Equal(t, 200, res.StatusCode)
-		assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
-		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
-		assert.Equal(t, gzipStrLevel(testBody, gzip.DefaultCompression), resp.Body.Bytes())
-	}
-
-	// same, but with accept-encoding:gzip,br;q=0.5 and PreferBrotli (brotli wins)
-	{
-		req, _ := http.NewRequest("GET", "/whatever", nil)
-		req.Header.Set("Accept-Encoding", "gzip,br;q=0.5")
-		resp := httptest.NewRecorder()
-		newTestHandler(testBody, Prefer(PreferBrotli)).ServeHTTP(resp, req)
+		newTestHandler(testBody, Prefer(PreferServer)).ServeHTTP(resp, req)
 		res := resp.Result()
 
 		assert.Equal(t, 200, res.StatusCode)
 		assert.Equal(t, "br", res.Header.Get("Content-Encoding"))
 		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
-		assert.Equal(t, brotliStrLevel(testBody, brotliDefaultCompression), resp.Body.Bytes())
-	}
-
-	// content-type header is correctly set based on uncompressed body
-	{
-		req, _ := http.NewRequest("GET", "/whatever", nil)
-		req.Header.Set("Accept-Encoding", "gzip")
-		res := httptest.NewRecorder()
-		handler.ServeHTTP(res, req)
-
-		assert.Equal(t, http.DetectContentType([]byte(testBody)), res.Header().Get("Content-Type"))
+		assert.Equal(t, brotliStrLevel(testBody, brotli.DefaultCompression), resp.Body.Bytes())
 	}
 }
 
@@ -406,34 +382,6 @@ func TestGzipHandlerMinSize(t *testing.T) {
 	if w.Result().Header.Get(contentEncoding) != "gzip" {
 		t.Error("Expected compressed response, got uncompressed")
 	}
-}
-
-func TestGzipDoubleClose(t *testing.T) {
-	t.Parallel()
-
-	// reset the pool for the default compression so we can make sure duplicates
-	// aren't added back by double close
-	addGzipLevelPool(gzip.DefaultCompression)
-
-	mw, _ := Middleware()
-	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// call close here and it'll get called again interally by
-		// NewGzipLevelHandler's handler defer
-		w.Write([]byte("test"))
-		w.(io.Closer).Close()
-	}))
-
-	r := httptest.NewRequest("GET", "/", nil)
-	r.Header.Set("Accept-Encoding", "gzip")
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, r)
-
-	// the second close shouldn't have added the same writer
-	// so we pull out 2 writers from the pool and make sure they're different
-	w1 := gzipWriterPools[gzipPoolIndex(gzip.DefaultCompression)].Get()
-	w2 := gzipWriterPools[gzipPoolIndex(gzip.DefaultCompression)].Get()
-	// assert.NotEqual looks at the value and not the address, so we use regular ==
-	assert.False(t, w1 == w2)
 }
 
 type panicOnSecondWriteHeaderWriter struct {

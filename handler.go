@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/CAFxX/gziphandler/custom"
 	"github.com/andybalholm/brotli"
 )
 
@@ -15,6 +14,8 @@ const (
 	contentEncoding = "Content-Encoding"
 	contentType     = "Content-Type"
 	contentLength   = "Content-Length"
+	gzipEncoding    = "gzip"
+	brotliEncoding  = "br"
 )
 
 type codings map[string]float64
@@ -33,16 +34,18 @@ const (
 // An error will be returned if invalid options are given.
 func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
 	c := config{
-		gzLevel:    gzip.DefaultCompression,
-		brLevel:    brotliDefaultCompression,
-		prefer:     PreferClientThenBrotli,
+		prefer:     PreferServer,
 		minSize:    DefaultMinSize,
-		gzipComp:   DefaultGzipCompressor{},
-		brotliComp: DefaultBrotliCompressor{},
+		compressor: comps{},
 	}
+	GzipCompressionLevel(gzip.DefaultCompression)(&c)
+	BrotliCompressionLevel(brotli.DefaultCompression)(&c)
 
 	for _, o := range opts {
 		o(&c)
+		if c.validationErr != nil {
+			return nil, c.validationErr
+		}
 	}
 
 	if err := c.validate(); err != nil {
@@ -53,19 +56,29 @@ func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(vary, acceptEncoding)
 
-			if ac := acceptsCompression(r); ac != acceptsNone {
-				gw := &gzipResponseWriter{
-					ResponseWriter: w,
-					config:         c,
-					accept:         ac,
-				}
-				defer gw.Close()
+			accept, err := parseEncodings(r.Header.Get(acceptEncoding))
+			if err != nil {
+				h.ServeHTTP(w, r)
+				return
+			}
+			common := acceptedCompression(accept, c.compressor)
+			if len(common) == 0 {
+				h.ServeHTTP(w, r)
+				return
+			}
 
-				if _, ok := w.(http.CloseNotifier); ok {
-					w = gzipResponseWriterWithCloseNotify{gw}
-				} else {
-					w = gw
-				}
+			gw := &gzipResponseWriter{
+				ResponseWriter: w,
+				config:         c,
+				accept:         accept,
+				common:         common,
+			}
+			defer gw.Close()
+
+			if _, ok := w.(http.CloseNotifier); ok {
+				w = gzipResponseWriterWithCloseNotify{gw}
+			} else {
+				w = gw
 			}
 
 			h.ServeHTTP(w, r)
@@ -75,31 +88,21 @@ func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
 
 // Used for functional configuration.
 type config struct {
-	gzLevel      int
-	brLevel      int
-	minSize      int                 // Specifies the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
-	contentTypes []parsedContentType // Only compress if the response is one of these content-types. All are accepted if empty.
-	blacklist    bool
-	prefer       PreferType
-	gzipComp     custom.Compressor
-	brotliComp   custom.Compressor
+	minSize       int                 // Specifies the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
+	contentTypes  []parsedContentType // Only compress if the response is one of these content-types. All are accepted if empty.
+	blacklist     bool
+	prefer        PreferType
+	compressor    comps
+	validationErr error
 }
 
 func (c *config) validate() error {
-	if c.gzLevel != gzip.DefaultCompression && (c.gzLevel < gzip.BestSpeed || c.gzLevel > gzip.BestCompression) {
-		return fmt.Errorf("invalid gzip compression level requested: %d", c.gzLevel)
-	}
-
-	if c.brLevel < brotli.BestSpeed || c.brLevel > brotli.BestCompression {
-		return fmt.Errorf("invalid brotli compression level requested: %d", c.brLevel)
-	}
-
 	if c.minSize < 0 {
 		return fmt.Errorf("minimum size must be more than zero: %d", c.minSize)
 	}
 
 	switch c.prefer {
-	case PreferBrotli, PreferClientThenBrotli, PreferClientThenGzip, PreferGzip:
+	case PreferServer, PreferClient:
 	default:
 		return fmt.Errorf("invalid prefer config: %v", c.prefer)
 	}
@@ -122,9 +125,11 @@ func MinSize(size int) Option {
 // level to be used when compressing payloads.
 // The default is gzip.DefaultCompression.
 func GzipCompressionLevel(level int) Option {
-	return func(c *config) {
-		c.gzLevel = level
+	c, err := NewDefaultGzipCompressor(level)
+	if err != nil {
+		return errorOption(err)
 	}
+	return GzipCompressor(c)
 }
 
 // BrotliCompressionLevel is an option that controls the Brotli compression
@@ -132,21 +137,25 @@ func GzipCompressionLevel(level int) Option {
 // The default is 3 (the same default used in the reference brotli C
 // implementation).
 func BrotliCompressionLevel(level int) Option {
-	return func(c *config) {
-		c.brLevel = level
+	c, err := NewDefaultBrotliCompressor(level)
+	if err != nil {
+		return errorOption(err)
 	}
+	return BrotliCompressor(c)
 }
 
 // GzipCompressor is an option to specify a custom compressor factory for Gzip.
-func GzipCompressor(g custom.Compressor) Option {
-	return func(c *config) {
-		c.gzipComp = g
-	}
+func GzipCompressor(g CompressorProvider) Option {
+	return Compressor(gzipEncoding, 0, g)
 }
 
 // BrotliCompressor is an option to specify a custom compressor factory for Brotli.
-func BrotliCompressor(b custom.Compressor) Option {
+func BrotliCompressor(b CompressorProvider) Option {
+	return Compressor(brotliEncoding, 1, b)
+}
+
+func errorOption(err error) Option {
 	return func(c *config) {
-		c.brotliComp = b
+		c.validationErr = err
 	}
 }

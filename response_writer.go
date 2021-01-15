@@ -7,8 +7,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-
-	"github.com/CAFxX/gziphandler/custom"
 )
 
 // gzipResponseWriter provides an http.ResponseWriter interface, which gzips
@@ -19,27 +17,19 @@ type gzipResponseWriter struct {
 	http.ResponseWriter
 
 	config config
-	accept acceptsType
+	accept codings
+	common []string
 
-	w          io.WriteCloser
-	writerType writerType
-	code       int    // Saves the WriteHeader value.
-	buf        []byte // Holds the first part of the write before reaching the minSize or the end of the write.
+	w    io.Writer
+	enc  string
+	code int    // Saves the WriteHeader value.
+	buf  []byte // Holds the first part of the write before reaching the minSize or the end of the write.
 }
 
 var (
 	_ io.WriteCloser = &gzipResponseWriter{}
 	_ http.Flusher   = &gzipResponseWriter{}
 	_ http.Hijacker  = &gzipResponseWriter{}
-)
-
-type writerType byte
-
-const (
-	noWriter writerType = iota
-	passthroughWriter
-	gzipWriter
-	brotliWriter
 )
 
 type gzipResponseWriterWithCloseNotify struct {
@@ -73,7 +63,7 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 		ce    = w.Header().Get(contentEncoding)
 	)
 	// Only continue if they didn't already choose an encoding or a known unhandled content length or type.
-	if ce == "" && (cl == 0 || cl >= w.config.minSize) && (ct == "" || handleContentTypes(w.config.contentTypes, w.config.contentTypes, w.config.blacklist, ct, w.config.prefer, w.accept) != handleNone) {
+	if ce == "" && (cl == 0 || cl >= w.config.minSize) && (ct == "" || handleContentType(ct, w.config.contentTypes, w.config.blacklist)) {
 		// If the current buffer is less than minSize and a Content-Length isn't set, then wait until we have more data.
 		if len(w.buf) < w.config.minSize && cl == 0 {
 			return len(b), nil
@@ -83,11 +73,10 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 			// If a Content-Type wasn't specified, infer it from the current buffer.
 			if ct == "" {
 				ct = http.DetectContentType(w.buf)
-				w.Header().Set(contentType, ct)
 			}
-			handle := handleContentTypes(w.config.contentTypes, w.config.contentTypes, w.config.blacklist, ct, w.config.prefer, w.accept)
-			if handle == handleGzip || handle == handleBrotli {
-				if err := w.startCompress(handle); err != nil {
+			if handleContentType(ct, w.config.contentTypes, w.config.blacklist) {
+				enc := preferredEncoding(w.accept, w.config.compressor, w.common, w.config.prefer)
+				if err := w.startCompress(enc); err != nil {
 					return 0, err
 				}
 				return len(b), nil
@@ -102,14 +91,13 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 }
 
 // startCompress initializes a compressing writer and writes the buffer.
-func (w *gzipResponseWriter) startCompress(h handleType) error {
-	if h == handleGzip {
-		w.Header().Set(contentEncoding, "gzip")
-	} else if h == handleBrotli {
-		w.Header().Set(contentEncoding, "br")
-	} else {
-		panic("unknown handleType")
+func (w *gzipResponseWriter) startCompress(enc string) error {
+	comp, ok := w.config.compressor[enc]
+	if !ok {
+		panic("unknown compressor")
 	}
+
+	w.Header().Set(contentEncoding, enc)
 
 	// if the Content-Length is already set, then calls to Write on gzip
 	// will fail to set the Content-Length header since its already set
@@ -127,13 +115,8 @@ func (w *gzipResponseWriter) startCompress(h handleType) error {
 	// If there aren't any, we shouldn't initialize it yet because on Close it will
 	// write the gzip header even if nothing was ever written.
 	if len(w.buf) > 0 {
-		if h == handleGzip {
-			w.w = w.config.gzipComp.Get(w.ResponseWriter, w.config.gzLevel)
-			w.writerType = gzipWriter
-		} else if h == handleBrotli {
-			w.w = w.config.brotliComp.Get(w.ResponseWriter, w.config.brLevel)
-			w.writerType = brotliWriter
-		}
+		w.w = comp.comp.Get(w.ResponseWriter)
+		w.enc = enc
 
 		n, err := w.w.Write(w.buf)
 
@@ -155,7 +138,8 @@ func (w *gzipResponseWriter) startPlain() error {
 		// Ensure that no other WriteHeader's happen
 		w.code = 0
 	}
-	w.writerType = passthroughWriter
+	w.w = w.ResponseWriter
+	w.enc = ""
 	// If Write was never called then don't call Write on the underlying ResponseWriter.
 	if w.buf == nil {
 		return nil
@@ -180,16 +164,9 @@ func (w *gzipResponseWriter) WriteHeader(code int) {
 
 // Close will close the gzip.Writer and will put it back in the gzipWriterPool.
 func (w *gzipResponseWriter) Close() error {
-	switch w.writerType {
-	case passthroughWriter:
-		return nil
-	case gzipWriter, brotliWriter:
-		if w.w == nil {
-			return nil
-		}
-		gw := w.w
+	if cw, ok := w.w.(io.Closer); ok {
 		w.w = nil
-		return gw.Close()
+		return cw.Close()
 	}
 
 	// compression not triggered yet, write out regular response.
@@ -206,20 +183,18 @@ func (w *gzipResponseWriter) Close() error {
 // an http.Flusher.
 func (w *gzipResponseWriter) Flush() {
 	if w.w == nil {
-		// Only flush once startGzip, startBrotli or startPlain has been called.
-		//
 		// Flush is thus a no-op until we're certain whether a plain
 		// or compressed response will be served.
 		return
 	}
 
-	switch w.writerType {
-	case gzipWriter, brotliWriter:
-		if fw, _ := w.w.(custom.Flusher); fw != nil {
-			fw.Flush()
-		}
+	// Flush the compressor, if supported,
+	// note: http.ResponseWriter does not implement Flusher, so we need to call ResponseWriter.Flush anyway.
+	if fw, ok := w.w.(Flusher); ok {
+		_ = fw.Flush()
 	}
 
+	// Flush the ResponseWriter (the previous Flusher is not expected to flush the parent writer).
 	if fw, ok := w.ResponseWriter.(http.Flusher); ok {
 		fw.Flush()
 	}
