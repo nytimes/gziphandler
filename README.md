@@ -63,12 +63,6 @@ func main() {
 }
 ```
 
-
-## Documentation
-
-The docs can be found [godoc.org][here].
-
-
 ## TODO
 
 - Add dictionary support to gzip and brotli
