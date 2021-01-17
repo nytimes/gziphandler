@@ -178,6 +178,9 @@ func (w *compressWriter) WriteHeader(code int) {
 
 // Close closes the compression Writer.
 func (w *compressWriter) Close() error {
+	if w.w != nil && w.enc == "" {
+		return nil
+	}
 	if cw, ok := w.w.(io.Closer); ok {
 		w.w = nil
 		return cw.Close()
