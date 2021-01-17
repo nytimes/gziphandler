@@ -73,6 +73,12 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 			// If a Content-Type wasn't specified, infer it from the current buffer.
 			if ct == "" {
 				ct = http.DetectContentType(w.buf)
+				if ct != "" {
+					// net/http by default performs content sniffing but this is disabled if content-encoding is set.
+					// Since we set content-encoding, if content-type was not set and we successfully sniffed it,
+					// set the content-type.
+					w.Header().Set(contentType, ct)
+				}
 			}
 			if handleContentType(ct, w.config.contentTypes, w.config.blacklist) {
 				enc := preferredEncoding(w.accept, w.config.compressor, w.common, w.config.prefer)
