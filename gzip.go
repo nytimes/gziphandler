@@ -40,6 +40,7 @@ type defaultGzipWriter struct {
 
 func (w *defaultGzipWriter) Close() error {
 	err := w.Writer.Close()
+	w.Reset(nil)
 	w.c.pool.Put(w)
 	return err
 }
