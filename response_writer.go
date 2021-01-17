@@ -198,6 +198,9 @@ func (w *compressWriter) Close() error {
 // Flush flushes the underlying compressor Writer and then the underlying
 // http.ResponseWriter if it is an http.Flusher. This makes compressWriter
 // an http.Flusher.
+// Flush is a no-op until enough data has been written to decide whether the
+// response should be compressed or not (e.g. less than MinSize bytes have
+// been written).
 func (w *compressWriter) Flush() {
 	if w.w == nil {
 		// Flush is thus a no-op until we're certain whether a plain
