@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 )
 
 // gzipResponseWriter provides an http.ResponseWriter interface, which gzips
@@ -19,6 +20,7 @@ type gzipResponseWriter struct {
 	config config
 	accept codings
 	common []string
+	pool   *sync.Pool
 
 	w    io.Writer
 	enc  string
@@ -46,6 +48,8 @@ var (
 	_ http.Hijacker  = gzipResponseWriterWithCloseNotify{}
 )
 
+const maxBuf = 1 << 16 // maximum size of recycled buffer
+
 // Write appends data to the gzip writer.
 func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	if w.w != nil {
@@ -55,6 +59,9 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 
 	// Save the write into a buffer for later use in GZIP responseWriter (if content is long enough) or at close with regular responseWriter.
 	// On the first write, w.buf changes from nil to a valid slice
+	if w.buf == nil {
+		w.buf, _ = w.pool.Get().([]byte)
+	}
 	w.buf = append(w.buf, b...)
 
 	var (
@@ -132,6 +139,7 @@ func (w *gzipResponseWriter) startCompress(enc string) error {
 		if err == nil && n < len(w.buf) {
 			err = io.ErrShortWrite
 		}
+		w.recycleBuffer()
 		return err
 	}
 	return nil
@@ -151,13 +159,13 @@ func (w *gzipResponseWriter) startPlain() error {
 		return nil
 	}
 	n, err := w.ResponseWriter.Write(w.buf)
-	w.buf = nil
 	// This should never happen (per io.Writer docs), but if the write didn't
 	// accept the entire buffer but returned no specific error, we have no clue
 	// what's going on, so abort just to be safe.
 	if err == nil && n < len(w.buf) {
 		err = io.ErrShortWrite
 	}
+	w.recycleBuffer()
 	return err
 }
 
@@ -213,4 +221,11 @@ func (w *gzipResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 		return hj.Hijack()
 	}
 	return nil, nil, fmt.Errorf("http.Hijacker interface is not supported")
+}
+
+func (w *gzipResponseWriter) recycleBuffer() {
+	if cap(w.buf) > 0 && cap(w.buf) <= maxBuf {
+		w.pool.Put(w.buf[:0])
+	}
+	w.buf = nil
 }

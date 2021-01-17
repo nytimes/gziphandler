@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/andybalholm/brotli"
 )
@@ -52,6 +53,8 @@ func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
 		return nil, err
 	}
 
+	p := &sync.Pool{}
+
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(vary, acceptEncoding)
@@ -72,6 +75,7 @@ func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
 				config:         c,
 				accept:         accept,
 				common:         common,
+				pool:           p,
 			}
 			defer gw.Close()
 
