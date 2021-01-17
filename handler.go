@@ -70,7 +70,7 @@ func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
 				return
 			}
 
-			gw := &gzipResponseWriter{
+			gw := &compressWriter{
 				ResponseWriter: w,
 				config:         c,
 				accept:         accept,
@@ -80,7 +80,7 @@ func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
 			defer gw.Close()
 
 			if _, ok := w.(http.CloseNotifier); ok {
-				w = gzipResponseWriterWithCloseNotify{gw}
+				w = compressWriterWithCloseNotify{gw}
 			} else {
 				w = gw
 			}

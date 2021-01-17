@@ -2,7 +2,7 @@ package gziphandler
 
 import "mime"
 
-func (g *gzipResponseWriter) handleContentTypes(contentType string) bool {
+func (g *compressWriter) handleContentTypes(contentType string) bool {
 	return true
 }
 

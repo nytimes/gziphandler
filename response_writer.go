@@ -10,17 +10,17 @@ import (
 	"sync"
 )
 
-// gzipResponseWriter provides an http.ResponseWriter interface, which gzips
+// compressWriter provides an http.ResponseWriter interface, which gzips
 // bytes before writing them to the underlying response. This doesn't close the
 // writers, so don't forget to do that.
 // It can be configured to skip response smaller than minSize.
-type gzipResponseWriter struct {
+type compressWriter struct {
 	http.ResponseWriter
 
 	config config
 	accept codings
 	common []string
-	pool   *sync.Pool
+	pool   *sync.Pool // pool of buffers (buf []byte); max size of each buf is maxBuf
 
 	w    io.Writer
 	enc  string
@@ -29,29 +29,29 @@ type gzipResponseWriter struct {
 }
 
 var (
-	_ io.WriteCloser = &gzipResponseWriter{}
-	_ http.Flusher   = &gzipResponseWriter{}
-	_ http.Hijacker  = &gzipResponseWriter{}
+	_ io.WriteCloser = &compressWriter{}
+	_ http.Flusher   = &compressWriter{}
+	_ http.Hijacker  = &compressWriter{}
 )
 
-type gzipResponseWriterWithCloseNotify struct {
-	*gzipResponseWriter
+type compressWriterWithCloseNotify struct {
+	*compressWriter
 }
 
-func (w gzipResponseWriterWithCloseNotify) CloseNotify() <-chan bool {
+func (w compressWriterWithCloseNotify) CloseNotify() <-chan bool {
 	return w.ResponseWriter.(http.CloseNotifier).CloseNotify()
 }
 
 var (
-	_ io.WriteCloser = gzipResponseWriterWithCloseNotify{}
-	_ http.Flusher   = gzipResponseWriterWithCloseNotify{}
-	_ http.Hijacker  = gzipResponseWriterWithCloseNotify{}
+	_ io.WriteCloser = compressWriterWithCloseNotify{}
+	_ http.Flusher   = compressWriterWithCloseNotify{}
+	_ http.Hijacker  = compressWriterWithCloseNotify{}
 )
 
 const maxBuf = 1 << 16 // maximum size of recycled buffer
 
 // Write appends data to the gzip writer.
-func (w *gzipResponseWriter) Write(b []byte) (int, error) {
+func (w *compressWriter) Write(b []byte) (int, error) {
 	if w.w != nil {
 		// The responseWriter is already initialized: use it.
 		return w.w.Write(b)
@@ -104,7 +104,7 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 }
 
 // startCompress initializes a compressing writer and writes the buffer.
-func (w *gzipResponseWriter) startCompress(enc string) error {
+func (w *compressWriter) startCompress(enc string) error {
 	comp, ok := w.config.compressor[enc]
 	if !ok {
 		panic("unknown compressor")
@@ -146,7 +146,7 @@ func (w *gzipResponseWriter) startCompress(enc string) error {
 }
 
 // startPlain writes to sent bytes and buffer the underlying ResponseWriter without gzip.
-func (w *gzipResponseWriter) startPlain() error {
+func (w *compressWriter) startPlain() error {
 	if w.code != 0 {
 		w.ResponseWriter.WriteHeader(w.code)
 		// Ensure that no other WriteHeader's happen
@@ -169,15 +169,15 @@ func (w *gzipResponseWriter) startPlain() error {
 	return err
 }
 
-// WriteHeader just saves the response code until close or GZIP effective writes.
-func (w *gzipResponseWriter) WriteHeader(code int) {
+// WriteHeader sets the response code that will be returned in the response.
+func (w *compressWriter) WriteHeader(code int) {
 	if w.code == 0 {
 		w.code = code
 	}
 }
 
-// Close will close the gzip.Writer and will put it back in the gzipWriterPool.
-func (w *gzipResponseWriter) Close() error {
+// Close closes the compression Writer.
+func (w *compressWriter) Close() error {
 	if cw, ok := w.w.(io.Closer); ok {
 		w.w = nil
 		return cw.Close()
@@ -192,10 +192,10 @@ func (w *gzipResponseWriter) Close() error {
 	return err
 }
 
-// Flush flushes the underlying *gzip.Writer and then the underlying
-// http.ResponseWriter if it is an http.Flusher. This makes gzipResponseWriter
+// Flush flushes the underlying compressor Writer and then the underlying
+// http.ResponseWriter if it is an http.Flusher. This makes compressWriter
 // an http.Flusher.
-func (w *gzipResponseWriter) Flush() {
+func (w *compressWriter) Flush() {
 	if w.w == nil {
 		// Flush is thus a no-op until we're certain whether a plain
 		// or compressed response will be served.
@@ -216,14 +216,14 @@ func (w *gzipResponseWriter) Flush() {
 
 // Hijack implements http.Hijacker. If the underlying ResponseWriter is a
 // Hijacker, its Hijack method is returned. Otherwise an error is returned.
-func (w *gzipResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+func (w *compressWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if hj, ok := w.ResponseWriter.(http.Hijacker); ok {
 		return hj.Hijack()
 	}
 	return nil, nil, fmt.Errorf("http.Hijacker interface is not supported")
 }
 
-func (w *gzipResponseWriter) recycleBuffer() {
+func (w *compressWriter) recycleBuffer() {
 	if cap(w.buf) > 0 && cap(w.buf) <= maxBuf {
 		w.pool.Put(w.buf[:0])
 	}
