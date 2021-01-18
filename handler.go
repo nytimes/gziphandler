@@ -6,7 +6,8 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/andybalholm/brotli"
+	"github.com/CAFxX/gziphandler/contrib/andybalholm/brotli"
+	_brotli "github.com/andybalholm/brotli"
 )
 
 const (
@@ -39,9 +40,10 @@ func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
 		minSize:    DefaultMinSize,
 		compressor: comps{},
 	}
-	GzipCompressionLevel(gzip.DefaultCompression)(&c)
-	BrotliCompressionLevel(brotli.DefaultCompression)(&c)
-
+	if len(opts) == 0 {
+		GzipCompressionLevel(gzip.DefaultCompression)(&c)
+		BrotliCompressionLevel(_brotli.DefaultCompression)(&c)
+	}
 	for _, o := range opts {
 		o(&c)
 		if c.validationErr != nil {
@@ -141,7 +143,7 @@ func GzipCompressionLevel(level int) Option {
 // The default is 3 (the same default used in the reference brotli C
 // implementation).
 func BrotliCompressionLevel(level int) Option {
-	c, err := NewDefaultBrotliCompressor(level)
+	c, err := brotli.New(_brotli.WriterOptions{Quality: level})
 	if err != nil {
 		return errorOption(err)
 	}
