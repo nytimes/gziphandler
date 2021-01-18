@@ -10,10 +10,9 @@ it's usually simpler to leave that to a reverse proxy (like nginx or Varnish),
 this package is useful when that is undesirable. In addition, this package allows
 users to extend it by plugging in third-party or custom compression encoders.
 
-**Note: This package was recently forked from NYTimes/httpcompression, so this is where
-the name comes from. Since maintaining drop-in compatibility is not a goal of this
-fork, and since the scope of the fork is wider than the original package, this
-package will likely be renamed in the near future.**
+**Note: This package was recently forked from NYTimes/gziphandler.
+Maintaining drop-in compatibility is not a goal of this fork, as the scope of this fork
+is significantly wider than the original package.**
 
 ## Features
 
