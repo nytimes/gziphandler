@@ -61,7 +61,7 @@ var dictionary = []byte{
 }
 
 // To test the custom zstd dictionary, start this server and then run:
-// $ curl -H "accept-encoding: zstd, z00000000" -v --output - localhost:8080 | zstd -d -D dictionary -c --no-progress -
+// $ curl -H "accept-encoding: zstd, z_2e6ca6d1" -v --output - localhost:8080 | zstd -d -D dictionary -c --no-progress -
 // To test curl interoperability:
 // $ curl --compressed -v --output - localhost:8080
 
@@ -70,7 +70,7 @@ func main() {
 	zdenc, _ := zstd.New(kpzstd.WithEncoderDict(dictionary))
 	gz, _ := gziphandler.Middleware(
 		gziphandler.Compressor(zstd.Encoding, 2, zenc),
-		gziphandler.Compressor("z00000000", 3, zdenc),
+		gziphandler.Compressor("z_2e6ca6d1", 3, zdenc),
 	)
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write(data)
