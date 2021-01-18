@@ -3,8 +3,8 @@ package main
 import (
 	"net/http"
 
-	"github.com/CAFxX/gziphandler"
-	"github.com/CAFxX/gziphandler/contrib/klauspost/zstd"
+	"github.com/CAFxX/httpcompression"
+	"github.com/CAFxX/httpcompression/contrib/klauspost/zstd"
 
 	kpzstd "github.com/klauspost/compress/zstd"
 )
@@ -68,9 +68,9 @@ var dictionary = []byte{
 func main() {
 	zenc, _ := zstd.New()
 	zdenc, _ := zstd.New(kpzstd.WithEncoderDict(dictionary))
-	gz, _ := gziphandler.Handler(
-		gziphandler.Compressor(zstd.Encoding, 2, zenc),
-		gziphandler.Compressor("z_2e6ca6d1", 3, zdenc),
+	gz, _ := httpcompression.Handler(
+		httpcompression.Compressor(zstd.Encoding, 2, zenc),
+		httpcompression.Compressor("z_2e6ca6d1", 3, zdenc),
 	)
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write(data)

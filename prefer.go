@@ -1,4 +1,4 @@
-package gziphandler
+package httpcompression
 
 import "sort"
 

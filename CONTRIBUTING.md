@@ -1,4 +1,4 @@
-# Contributing to CAFxX/gziphandler
+# Contributing to CAFxX/httpcompression
 
 This is an open source project started by handful of developers at The New York Times, forked by Carlo Alberto Ferraris and open to the entire Go community.
 
@@ -27,4 +27,4 @@ Before submitting changes, please follow these guidelines:
 7. Open a Pull Request.
 8. [Squash your commits](http://gitready.com/advanced/2009/02/10/squashing-commits-with-rebase.html) after receiving feedback and add a [great commit message](http://tbaggery.com/2008/04/19/a-note-about-git-commit-messages.html).
 
-Unless otherwise noted, the gziphandler source files are distributed under the Apache 2.0-style license found in the LICENSE.md file.
+Unless otherwise noted, the httpcompression source files are distributed under the Apache 2.0-style license found in the LICENSE.md file.

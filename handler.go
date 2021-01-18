@@ -1,4 +1,4 @@
-package gziphandler // import "github.com/CAFxX/gziphandler"
+package httpcompression // import "github.com/CAFxX/httpcompression"
 
 import (
 	"compress/gzip"
@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/CAFxX/gziphandler/contrib/andybalholm/brotli"
+	"github.com/CAFxX/httpcompression/contrib/andybalholm/brotli"
 	_brotli "github.com/andybalholm/brotli"
 )
 

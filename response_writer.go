@@ -1,4 +1,4 @@
-package gziphandler
+package httpcompression
 
 import (
 	"bufio"
@@ -190,7 +190,7 @@ func (w *compressWriter) Close() error {
 	err := w.startPlain()
 	// Returns the error if any at write.
 	if err != nil {
-		err = fmt.Errorf("gziphandler: write to regular responseWriter at close gets error: %v", err)
+		err = fmt.Errorf("httpcompression: write to regular responseWriter at close gets error: %v", err)
 	}
 	return err
 }

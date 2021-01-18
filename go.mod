@@ -1,4 +1,4 @@
-module github.com/CAFxX/gziphandler
+module github.com/CAFxX/httpcompression
 
 go 1.11
 

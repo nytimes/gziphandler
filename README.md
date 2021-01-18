@@ -1,8 +1,8 @@
 Golang server middleware for HTTP compression
 =============================================
 
-[![Documentation](https://godoc.org/github.com/CAFxX/gziphandler?status.svg)](https://godoc.org/github.com/CAFxX/gziphandler)
-[![Coverage](https://gocover.io/_badge/github.com/CAFxX/gziphandler)](https://gocover.io/github.com/CAFxX/gziphandler)
+[![Documentation](https://godoc.org/github.com/CAFxX/httpcompression?status.svg)](https://godoc.org/github.com/CAFxX/httpcompression)
+[![Coverage](https://gocover.io/_badge/github.com/CAFxX/httpcompression)](https://gocover.io/github.com/CAFxX/httpcompression)
 
 This is a small Go package which wraps HTTP handlers to transparently compress
 response bodies using zstd, brotli or gzip - for clients which support them. Although 
@@ -10,7 +10,7 @@ it's usually simpler to leave that to a reverse proxy (like nginx or Varnish),
 this package is useful when that is undesirable. In addition, this package allows
 users to extend it by plugging in third-party or custom compression encoders.
 
-**Note: This package was recently forked from NYTimes/gziphandler, so this is where
+**Note: This package was recently forked from NYTimes/httpcompression, so this is where
 the name comes from. Since maintaining drop-in compatibility is not a goal of this
 fork, and since the scope of the fork is wider than the original package, this
 package will likely be renamed in the near future.**
@@ -27,15 +27,15 @@ package will likely be renamed in the near future.**
 
 ## Install
 ```bash
-go get -u github.com/CAFxX/gziphandler
+go get -u github.com/CAFxX/httpcompression
 ```
 
 ## Usage
 
-Call `gziphandler.Handler` to get an adapter that can be used to wrap
+Call `httpcompression.Handler` to get an adapter that can be used to wrap
 any handler (an object which implements the `http.Handler` interface),
 to transparently provide response body compression. 
-Note that, despite the name, `gziphandler` automatically compresses using 
+Note that, despite the name, `httpcompression` automatically compresses using 
 Brotli or Gzip, depending on the capabilities of the client (`Accept-Encoding`)
 and the configuration of this handler (by default, both Gzip and Brotli are 
 enabled and Brotli is used by default if the client supports both).
@@ -48,7 +48,7 @@ package main
 import (
 	"io"
 	"net/http"
-	"github.com/CAFxX/gziphandler"
+	"github.com/CAFxX/httpcompression"
 )
 
 func main() {
@@ -56,7 +56,7 @@ func main() {
 		w.Header().Set("Content-Type", "text/plain")
 		io.WriteString(w, "Hello, World")
 	})
-	compress := gziphandler.Handler()
+	compress := httpcompression.Handler()
 	http.Handle("/", compress(handler))
 	http.ListenAndServe("0.0.0.0:8080", nil)
 }
@@ -74,5 +74,5 @@ func main() {
 
 
 
-[docs]:     https://godoc.org/github.com/CAFxX/gziphandler
-[license]:  https://github.com/CAFxX/gziphandler/blob/master/LICENSE
+[docs]:     https://godoc.org/github.com/CAFxX/httpcompression
+[license]:  https://github.com/CAFxX/httpcompression/blob/master/LICENSE
