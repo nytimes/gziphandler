@@ -1,8 +1,10 @@
 Golang server middleware for HTTP compression
 =============================================
 
-[![Documentation](https://godoc.org/github.com/CAFxX/httpcompression?status.svg)](https://godoc.org/github.com/CAFxX/httpcompression)
-[![Coverage](https://gocover.io/_badge/github.com/CAFxX/httpcompression)](https://gocover.io/github.com/CAFxX/httpcompression)
+[![Build status](https://github.com/CAFxX/httpcompression/workflows/Build/badge.svg)](https://github.com/CAFxX/httpcompression/actions)
+[![codecov](https://codecov.io/gh/CAFxX/httpcompression/branch/main/graph/badge.svg)](https://codecov.io/gh/CAFxX/httpcompression)
+[![Go Report](https://goreportcard.com/badge/github.com/CAFxX/httpcompression)](https://goreportcard.com/report/github.com/CAFxX/httpcompression) 
+[![Go Reference](https://pkg.go.dev/badge/github.com/CAFxX/httpcompression.svg)](https://pkg.go.dev/github.com/CAFxX/httpcompression) :warning: API is not stable yet.
 
 This is a small Go package which wraps HTTP handlers to transparently compress
 response bodies using zstd, brotli or gzip - for clients which support them. Although 
