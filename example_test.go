@@ -38,14 +38,18 @@ func ExampleWithDictionary() {
 		log.Fatal(err)
 	}
 	dict := []byte("dictionary contents") // replace with dictionary contents
-	dictID := "0000"                      // replace with dictionary ID
 	zdEnc, err := zstd.New(kpzstd.WithEncoderDict(dict))
 	if err != nil {
 		log.Fatal(err)
 	}
 	_, _ = gziphandler.Middleware(
-		gziphandler.Compressor(zstd.Encoding+"_"+dictID, 1, zdEnc), // non-standard, client support needed
-		gziphandler.Compressor(zstd.Encoding, 0, zEnc),
+		// Add the zstd compressor with the dictionary.
+		// We need to pick a custom content-encoding name. It is recommended to: 
+		// - avoid names that contain standard names (e.g. "gzip", "deflate", "br" or "zstd")
+		// - include the dictionary ID, so that multiple dictionaries can be used (including
+		//   e.g. multiple versions of the same dictionary)
+		gziphandler.Compressor("z00000000", 3, zdEnc),
+		gziphandler.Compressor(zstd.Encoding, 2, zEnc),
 		gziphandler.Prefer(gziphandler.PreferServer),
 		gziphandler.MinSize(0),
 		gziphandler.ContentTypes([]string{
