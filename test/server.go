@@ -68,7 +68,7 @@ var dictionary = []byte{
 func main() {
 	zenc, _ := zstd.New()
 	zdenc, _ := zstd.New(kpzstd.WithEncoderDict(dictionary))
-	gz, _ := gziphandler.Middleware(
+	gz, _ := gziphandler.Handler(
 		gziphandler.Compressor(zstd.Encoding, 2, zenc),
 		gziphandler.Compressor("z_2e6ca6d1", 3, zdenc),
 	)

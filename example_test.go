@@ -19,7 +19,7 @@ func Example() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	_, _ = gziphandler.Middleware(
+	_, _ = gziphandler.Handler(
 		gziphandler.Compressor(brotli.Encoding, 1, brEnc),
 		gziphandler.Compressor(gzip.Encoding, 0, gzEnc),
 		gziphandler.Prefer(gziphandler.PreferServer),
@@ -42,9 +42,9 @@ func ExampleWithDictionary() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	_, _ = gziphandler.Middleware(
+	_, _ = gziphandler.Handler(
 		// Add the zstd compressor with the dictionary.
-		// We need to pick a custom content-encoding name. It is recommended to: 
+		// We need to pick a custom content-encoding name. It is recommended to:
 		// - avoid names that contain standard names (e.g. "gzip", "deflate", "br" or "zstd")
 		// - include the dictionary ID, so that multiple dictionaries can be used (including
 		//   e.g. multiple versions of the same dictionary)

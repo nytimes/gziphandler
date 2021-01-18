@@ -29,21 +29,19 @@ const (
 	DefaultMinSize = 20
 )
 
-// Middleware returns a wrapper function (often known as middleware)
+// Handler returns a wrapper function (often known as middleware)
 // which can be used to wrap an HTTP handler to transparently compress the response
 // body if the client supports it (via the Accept-Encoding header).
 // It is possible to pass one or more options to modify the middleware configuration.
 // An error will be returned if invalid options are given.
-func Middleware(opts ...Option) (func(http.Handler) http.Handler, error) {
+func Handler(opts ...Option) (func(http.Handler) http.Handler, error) {
 	c := config{
 		prefer:     PreferServer,
 		minSize:    DefaultMinSize,
 		compressor: comps{},
 	}
-	if len(opts) == 0 {
-		GzipCompressionLevel(gzip.DefaultCompression)(&c)
-		BrotliCompressionLevel(_brotli.DefaultCompression)(&c)
-	}
+	GzipCompressionLevel(gzip.DefaultCompression)(&c)
+	BrotliCompressionLevel(_brotli.DefaultCompression)(&c)
 	for _, o := range opts {
 		o(&c)
 		if c.validationErr != nil {
@@ -116,7 +114,7 @@ func (c *config) validate() error {
 	return nil
 }
 
-// Option can be passed to Middleware to control its configuration.
+// Option can be passed to Handler to control its configuration.
 type Option func(c *config)
 
 // MinSize is an option that controls the minimum size of payloads that

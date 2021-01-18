@@ -32,7 +32,7 @@ go get -u github.com/CAFxX/gziphandler
 
 ## Usage
 
-Call `gziphandler.Middleware` to get an adapter that can be used to wrap
+Call `gziphandler.Handler` to get an adapter that can be used to wrap
 any handler (an object which implements the `http.Handler` interface),
 to transparently provide response body compression. 
 Note that, despite the name, `gziphandler` automatically compresses using 
@@ -56,7 +56,7 @@ func main() {
 		w.Header().Set("Content-Type", "text/plain")
 		io.WriteString(w, "Hello, World")
 	})
-	compress := gziphandler.Middleware()
+	compress := gziphandler.Handler()
 	http.Handle("/", compress(handler))
 	http.ListenAndServe("0.0.0.0:8080", nil)
 }
