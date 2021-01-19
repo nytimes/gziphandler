@@ -59,6 +59,7 @@ func (w *compressWriter) Write(b []byte) (int, error) {
 
 	// Save the write into a buffer for later use in GZIP responseWriter (if content is long enough) or at close with regular responseWriter.
 	// On the first write, w.buf changes from nil to a valid slice
+	// TODO: Add a fast path in case the first buffer is larger than max(512, w.config.minSize), and lower the buf limit for the pool to the same value
 	if w.buf == nil {
 		w.buf, _ = w.pool.Get().([]byte)
 	}
