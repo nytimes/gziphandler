@@ -29,19 +29,16 @@ const (
 	DefaultMinSize = 20
 )
 
-// Handler returns a wrapper function (often known as middleware)
+// Adapter returns a HTTP handler wrapping function (a.k.a. middleware)
 // which can be used to wrap an HTTP handler to transparently compress the response
 // body if the client supports it (via the Accept-Encoding header).
 // It is possible to pass one or more options to modify the middleware configuration.
 // An error will be returned if invalid options are given.
-func Handler(opts ...Option) (func(http.Handler) http.Handler, error) {
+func Adapter(opts ...Option) (func(http.Handler) http.Handler, error) {
 	c := config{
 		prefer:     PreferServer,
-		minSize:    DefaultMinSize,
 		compressor: comps{},
 	}
-	GzipCompressionLevel(gzip.DefaultCompression)(&c)
-	BrotliCompressionLevel(_brotli.DefaultCompression)(&c)
 	for _, o := range opts {
 		o(&c)
 		if c.validationErr != nil {
@@ -90,6 +87,20 @@ func Handler(opts ...Option) (func(http.Handler) http.Handler, error) {
 	}, nil
 }
 
+// DefaultAdapter is like Adapter, but it includes sane defaults for general usage.
+// The provided opts override the defaults.
+// The defaults are not guaranteed to remain constant over time: if you want to avoid this
+// use Adapter directly.
+func DefaultAdapter(opts ...Option) (func(http.Handler) http.Handler, error) {
+	defaults := []Option{
+		GzipCompressionLevel(gzip.DefaultCompression),
+		BrotliCompressionLevel(_brotli.DefaultCompression),
+		MinSize(DefaultMinSize),
+	}
+	opts = append(defaults, opts...)
+	return Adapter(opts...)
+}
+
 // Used for functional configuration.
 type config struct {
 	minSize       int                 // Specifies the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
@@ -102,7 +113,7 @@ type config struct {
 
 func (c *config) validate() error {
 	if c.minSize < 0 {
-		return fmt.Errorf("minimum size must be more than zero: %d", c.minSize)
+		return fmt.Errorf("minimum size can not be negative: %d", c.minSize)
 	}
 
 	switch c.prefer {

@@ -6,6 +6,8 @@ import (
 	"sync"
 )
 
+var _ CompressorProvider = &defaultGzipCompressor{}
+
 type defaultGzipCompressor struct {
 	pool  sync.Pool
 	level int

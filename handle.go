@@ -2,10 +2,6 @@ package httpcompression
 
 import "mime"
 
-func (g *compressWriter) handleContentTypes(contentType string) bool {
-	return true
-}
-
 // returns true if we've been configured to compress the specific content type.
 func handleContentType(ct string, contentTypes []parsedContentType, blacklist bool) bool {
 	// If contentTypes is empty we handle all content types.

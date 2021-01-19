@@ -178,7 +178,7 @@ func TestNewGzipLevelHandler(t *testing.T) {
 	})
 
 	for lvl := gzip.BestSpeed; lvl <= gzip.BestCompression; lvl++ {
-		wrapper, err := Handler(GzipCompressionLevel(lvl))
+		wrapper, err := DefaultAdapter(GzipCompressionLevel(lvl))
 		if !assert.Nil(t, err, "NewGzipLevleHandler returned error for level:", lvl) {
 			continue
 		}
@@ -200,10 +200,10 @@ func TestNewGzipLevelHandlerReturnsErrorForInvalidLevels(t *testing.T) {
 	t.Parallel()
 
 	var err error
-	_, err = Handler(GzipCompressionLevel(-42))
+	_, err = DefaultAdapter(GzipCompressionLevel(-42))
 	assert.NotNil(t, err)
 
-	_, err = Handler(GzipCompressionLevel(42))
+	_, err = DefaultAdapter(GzipCompressionLevel(42))
 	assert.NotNil(t, err)
 }
 
@@ -225,7 +225,7 @@ func TestGzipHandlerNoBody(t *testing.T) {
 	}
 
 	for num, test := range tests {
-		mw, _ := Handler()
+		mw, _ := DefaultAdapter()
 		handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(test.statusCode)
 			if test.body != nil {
@@ -296,7 +296,7 @@ func TestGzipHandlerContentLength(t *testing.T) {
 	go srv.Serve(ln)
 
 	for num, test := range tests {
-		mw, _ := Handler()
+		mw, _ := DefaultAdapter()
 		srv.Handler = mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if test.bodyLen > 0 {
 				w.Header().Set("Content-Length", strconv.Itoa(test.bodyLen))
@@ -341,7 +341,7 @@ func TestGzipHandlerContentLength(t *testing.T) {
 func TestGzipHandlerMinSizeMustBePositive(t *testing.T) {
 	t.Parallel()
 
-	_, err := Handler(MinSize(-1))
+	_, err := DefaultAdapter(MinSize(-1))
 	assert.Error(t, err)
 }
 
@@ -351,7 +351,7 @@ func TestGzipHandlerMinSize(t *testing.T) {
 	responseLength := 0
 	b := []byte{'x'}
 
-	wrapper, _ := Handler(MinSize(128))
+	wrapper, _ := DefaultAdapter(MinSize(128))
 	handler := wrapper(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			// Write responses one byte at a time to ensure that the flush
@@ -400,7 +400,7 @@ func (w *panicOnSecondWriteHeaderWriter) WriteHeader(s int) {
 func TestGzipHandlerDoubleWriteHeader(t *testing.T) {
 	t.Parallel()
 
-	mw, _ := Handler()
+	mw, _ := DefaultAdapter()
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "15000")
 		// Specifically write the header here
@@ -442,7 +442,7 @@ func TestGzipHandlerDoubleWriteHeader(t *testing.T) {
 func TestStatusCodes(t *testing.T) {
 	t.Parallel()
 
-	mw, _ := Handler()
+	mw, _ := DefaultAdapter()
 	handler := mw(http.NotFoundHandler())
 	r := httptest.NewRequest("GET", "/", nil)
 	r.Header.Set("Accept-Encoding", "gzip")
@@ -459,7 +459,7 @@ func TestFlushBeforeWrite(t *testing.T) {
 	t.Parallel()
 
 	b := []byte(testBody)
-	mw, _ := Handler()
+	mw, _ := DefaultAdapter()
 	handler := mw(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusNotFound)
 		rw.(http.Flusher).Flush()
@@ -481,7 +481,7 @@ func TestImplementCloseNotifier(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
-	mw, _ := Handler()
+	mw, _ := DefaultAdapter()
 	mw(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		_, ok := rw.(http.CloseNotifier)
 		assert.True(t, ok, "response writer must implement http.CloseNotifier")
@@ -493,7 +493,7 @@ func TestImplementFlusherAndCloseNotifier(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
-	mw, _ := Handler()
+	mw, _ := DefaultAdapter()
 	mw(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		_, okCloseNotifier := rw.(http.CloseNotifier)
 		assert.True(t, okCloseNotifier, "response writer must implement http.CloseNotifier")
@@ -507,7 +507,7 @@ func TestNotImplementCloseNotifier(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
-	mw, _ := Handler()
+	mw, _ := DefaultAdapter()
 	mw(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		_, ok := rw.(http.CloseNotifier)
 		assert.False(t, ok, "response writer must not implement http.CloseNotifier")
@@ -535,7 +535,7 @@ func (m *mockRWCloseNotify) WriteHeader(int) {
 func TestIgnoreSubsequentWriteHeader(t *testing.T) {
 	t.Parallel()
 
-	mw, _ := Handler()
+	mw, _ := DefaultAdapter()
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		w.WriteHeader(404)
@@ -558,7 +558,7 @@ func TestDontWriteWhenNotWrittenTo(t *testing.T) {
 	// ensure the gzip middleware doesn't touch the actual ResponseWriter
 	// either.
 
-	mw, _ := Handler()
+	mw, _ := DefaultAdapter()
 	handler0 := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	}))
 
@@ -650,7 +650,7 @@ func TestContentTypes(t *testing.T) {
 			io.WriteString(w, testBody)
 		})
 
-		wrapper, err := Handler(ContentTypes(tt.acceptedContentTypes, false))
+		wrapper, err := DefaultAdapter(ContentTypes(tt.acceptedContentTypes, false))
 		if !assert.Nil(t, err, "NewGzipHandlerWithOpts returned error", tt.name) {
 			continue
 		}
@@ -739,7 +739,7 @@ func runBenchmark(b *testing.B, req *http.Request, handler http.Handler) {
 }
 
 func newTestHandler(body string, opts ...Option) http.Handler {
-	mw, err := Handler(opts...)
+	mw, err := DefaultAdapter(opts...)
 	if err != nil {
 		panic(err)
 	}
