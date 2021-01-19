@@ -20,19 +20,26 @@ type Flusher interface {
 	Flush() error
 }
 
-type comps map[string]comp
-
-type comp struct {
-	comp     CompressorProvider
-	priority int
-}
-
+// Compressor returns an Option that sets the CompressorProvider for a specific Content-Encoding.
+// If multiple CompressorProviders are set for the same Content-Encoding, the last one is used.
+// If compressor is nil, it disables the specified Content-Encoding.
+// Priority is used to specify the priority of the Content-Encoding. A higher number means higher
+// priority. See PreferType to understand how priority is used to select the Content-Encoding for
+// a specific request.
 func Compressor(contentEncoding string, priority int, compressor CompressorProvider) Option {
-	return func(c *config) {
+	return func(c *config) error {
 		if compressor == nil {
 			delete(c.compressor, contentEncoding)
-			return
+			return nil
 		}
 		c.compressor[contentEncoding] = comp{compressor, priority}
+		return nil
 	}
+}
+
+func mustCompressor(contentEncoding string, priority int, compressor CompressorProvider, err error) Option {
+	if err != nil {
+		return errorOption(err)
+	}
+	return Compressor(contentEncoding, priority, compressor)
 }

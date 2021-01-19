@@ -1,14 +1,23 @@
 package httpcompression
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+)
 
 // Prefer controls the behavior of the middleware in case both Gzip and Brotli
 // can be used to compress a response (i.e. in case the client supports both
 // encodings, and the MIME type of the response is allowed for both encodings).
 // See the comments on the PreferType constants for the supported values.
 func Prefer(prefer PreferType) Option {
-	return func(c *config) {
-		c.prefer = prefer
+	return func(c *config) error {
+		switch prefer {
+		case PreferServer, PreferClient:
+			c.prefer = prefer
+			return nil
+		default:
+			return fmt.Errorf("unknown prefer type: %v", prefer)
+		}
 	}
 }
 

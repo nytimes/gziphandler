@@ -40,9 +40,9 @@ func Adapter(opts ...Option) (func(http.Handler) http.Handler, error) {
 		compressor: comps{},
 	}
 	for _, o := range opts {
-		o(&c)
-		if c.validationErr != nil {
-			return nil, c.validationErr
+		err := o(&c)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -112,12 +112,18 @@ func DefaultAdapter(opts ...Option) (func(http.Handler) http.Handler, error) {
 
 // Used for functional configuration.
 type config struct {
-	minSize       int                 // Specifies the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
-	contentTypes  []parsedContentType // Only compress if the response is one of these content-types. All are accepted if empty.
-	blacklist     bool
-	prefer        PreferType
-	compressor    comps
-	validationErr error
+	minSize      int                 // Specifies the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
+	contentTypes []parsedContentType // Only compress if the response is one of these content-types. All are accepted if empty.
+	blacklist    bool
+	prefer       PreferType
+	compressor   comps
+}
+
+type comps map[string]comp
+
+type comp struct {
+	comp     CompressorProvider
+	priority int
 }
 
 func (c *config) validate() error {
@@ -135,13 +141,14 @@ func (c *config) validate() error {
 }
 
 // Option can be passed to Handler to control its configuration.
-type Option func(c *config)
+type Option func(c *config) error
 
 // MinSize is an option that controls the minimum size of payloads that
 // should be compressed. The default is DefaultMinSize.
 func MinSize(size int) Option {
-	return func(c *config) {
+	return func(c *config) error {
 		c.minSize = size
+		return nil
 	}
 }
 
@@ -179,7 +186,7 @@ func BrotliCompressor(b CompressorProvider) Option {
 }
 
 func errorOption(err error) Option {
-	return func(c *config) {
-		c.validationErr = err
+	return func(_ *config) error {
+		return err
 	}
 }

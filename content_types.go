@@ -29,15 +29,17 @@ import "mime"
 //
 // By default, responses are compressed regardless of Content-Type.
 func ContentTypes(types []string, blacklist bool) Option {
-	return func(c *config) {
+	return func(c *config) error {
 		c.contentTypes = []parsedContentType{}
 		for _, v := range types {
 			mediaType, params, err := mime.ParseMediaType(v)
-			if err == nil {
-				c.contentTypes = append(c.contentTypes, parsedContentType{mediaType, params})
+			if err != nil {
+				return err
 			}
+			c.contentTypes = append(c.contentTypes, parsedContentType{mediaType, params})
 		}
 		c.blacklist = blacklist
+		return nil
 	}
 }
 
