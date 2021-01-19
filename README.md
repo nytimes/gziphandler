@@ -57,7 +57,7 @@ func main() {
 		w.Header().Set("Content-Type", "text/plain")
 		io.WriteString(w, "Hello, World")
 	})
-	compress := httpcompression.Handler()
+	compress := httpcompression.DefaultAdapter() // Use the default configuration
 	http.Handle("/", compress(handler))
 	http.ListenAndServe("0.0.0.0:8080", nil)
 }
