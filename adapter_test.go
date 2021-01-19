@@ -755,28 +755,19 @@ func benchmark(b *testing.B, parallel bool, size int, ae string) {
 	req.Header.Set("Accept-Encoding", ae)
 	handler := newTestHandler(string(bin[:size]))
 
+	b.ResetTimer()
 	if parallel {
-		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
+			var res httptest.ResponseRecorder
 			for pb.Next() {
-				runBenchmark(b, req, handler)
+				handler.ServeHTTP(&res, req)
 			}
 		})
 	} else {
-		b.ResetTimer()
+		var res httptest.ResponseRecorder
 		for i := 0; i < b.N; i++ {
-			runBenchmark(b, req, handler)
+			handler.ServeHTTP(&res, req)
 		}
-	}
-}
-
-func runBenchmark(b *testing.B, req *http.Request, handler http.Handler) {
-	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, req)
-	if code := res.Code; code != 200 {
-		b.Fatalf("Expected 200 but got %d", code)
-	} else if blen := res.Body.Len(); blen < 500 {
-		b.Fatalf("Expected complete response body, but got %d bytes", blen)
 	}
 }
 
@@ -785,13 +776,14 @@ func newTestHandler(body string, opts ...Option) http.Handler {
 	if err != nil {
 		panic(err)
 	}
+	buf := []byte(body)
 	return mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/gzipped":
 			w.Header().Set("Content-Encoding", "gzip")
-			io.WriteString(w, body)
+			w.Write(buf)
 		default:
-			io.WriteString(w, body)
+			w.Write(buf)
 		}
 	}))
 }
