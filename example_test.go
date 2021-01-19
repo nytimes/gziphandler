@@ -96,6 +96,6 @@ func readZstdDictionary(file string) (dict []byte, coding string, err error) {
 		return nil, "", fmt.Errorf("invalid dictionary")
 	}
 	dictID := binary.LittleEndian.Uint32(dict[4:8]) // read the dictionary ID
-	coding = fmt.Sprintf("z%08x", dictID)           // build the encoding name: zXXXXXXXX (where XXXXXXXX is the dictionary ID in hex lowercase)
+	coding = fmt.Sprintf("z_%08x", dictID)          // build the encoding name: z_XXXXXXXX (where XXXXXXXX is the dictionary ID in hex lowercase)
 	return
 }

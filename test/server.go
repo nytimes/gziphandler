@@ -68,7 +68,7 @@ var dictionary = []byte{
 func main() {
 	zenc, _ := zstd.New()
 	zdenc, _ := zstd.New(kpzstd.WithEncoderDict(dictionary))
-	gz, _ := httpcompression.Handler(
+	gz, _ := httpcompression.DefaultAdapter(
 		httpcompression.Compressor(zstd.Encoding, 2, zenc),
 		httpcompression.Compressor("z_2e6ca6d1", 3, zdenc),
 	)
