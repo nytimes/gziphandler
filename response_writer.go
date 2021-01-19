@@ -66,10 +66,14 @@ func (w *compressWriter) Write(b []byte) (int, error) {
 	w.buf = append(w.buf, b...)
 
 	var (
-		cl, _ = strconv.Atoi(w.Header().Get(contentLength))
-		ct    = w.Header().Get(contentType)
-		ce    = w.Header().Get(contentEncoding)
+		ct = w.Header().Get(contentType)
+		ce = w.Header().Get(contentEncoding)
+		cl = 0
 	)
+	if clv := w.Header().Get(contentLength); clv != "" {
+		cl, _ = strconv.Atoi(clv)
+	}
+
 	// Only continue if they didn't already choose an encoding or a known unhandled content length or type.
 	if ce == "" && (cl == 0 || cl >= w.config.minSize) && (ct == "" || handleContentType(ct, w.config.contentTypes, w.config.blacklist)) {
 		// If the current buffer is less than minSize and a Content-Length isn't set, then wait until we have more data.
