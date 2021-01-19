@@ -54,7 +54,7 @@ func Adapter(opts ...Option) (func(http.Handler) http.Handler, error) {
 
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Add(vary, acceptEncoding)
+			addVaryHeader(w.Header(), acceptEncoding)
 
 			accept, err := parseEncodings(r.Header.Get(acceptEncoding))
 			if err != nil {
@@ -85,6 +85,15 @@ func Adapter(opts ...Option) (func(http.Handler) http.Handler, error) {
 			h.ServeHTTP(w, r)
 		})
 	}, nil
+}
+
+func addVaryHeader(h http.Header, value string) {
+	for _, v := range h.Values(vary) {
+		if v == value {
+			return
+		}
+	}
+	h.Add(vary, value)
 }
 
 // DefaultAdapter is like Adapter, but it includes sane defaults for general usage.
