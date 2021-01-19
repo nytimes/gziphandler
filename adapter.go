@@ -50,7 +50,8 @@ func Adapter(opts ...Option) (func(http.Handler) http.Handler, error) {
 		return nil, err
 	}
 
-	p := &sync.Pool{}
+	bufPool := &sync.Pool{}
+	writerPool := &sync.Pool{}
 
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -63,14 +64,22 @@ func Adapter(opts ...Option) (func(http.Handler) http.Handler, error) {
 				return
 			}
 
-			gw := &compressWriter{
+			gw, _ := writerPool.Get().(*compressWriter)
+			if gw == nil {
+				gw = &compressWriter{}
+			}
+			*gw = compressWriter{
 				ResponseWriter: w,
 				config:         c,
 				accept:         accept,
 				common:         common,
-				pool:           p,
+				pool:           bufPool,
 			}
-			defer gw.Close()
+			defer func() {
+				_ = gw.Close() // expose the error
+				*gw = compressWriter{}
+				writerPool.Put(gw)
+			}()
 
 			if _, ok := w.(http.CloseNotifier); ok {
 				w = compressWriterWithCloseNotify{gw}
