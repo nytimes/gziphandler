@@ -38,10 +38,17 @@ func TestParseEncodings(t *testing.T) {
 		"AAA;q=1":     {"aaa": 1.0},
 		"BBB ; q = 2": {"bbb": 1.0},
 		"CCC; q = -1": {"ccc": 0.0},
+		"DDD;":        {"ddd": 1.0},
+		"EEE;;":       {"eee": 1.0},
+		"FFF;q=;":     {"fff": 0.0},
+		";":           {},
+		";q=1":        {},
+		";;":          {},
+		";;q=1":       {},
 	}
 
 	for eg, exp := range examples {
-		act, _ := parseEncodings(eg)
+		act := parseEncodings(eg)
 		assert.Equal(t, exp, act)
 	}
 }
