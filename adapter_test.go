@@ -755,6 +755,12 @@ func benchmark(b *testing.B, parallel bool, size int, ae string) {
 	req.Header.Set("Accept-Encoding", ae)
 	handler := newTestHandler(string(bin[:size]))
 
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != 200 || res.Header().Get("Content-Encoding") != ae || res.Body.Len() < size/10 {
+		b.Fatal(res)
+	}
+
 	b.ResetTimer()
 	if parallel {
 		b.RunParallel(func(pb *testing.PB) {
