@@ -177,6 +177,44 @@ func TestGzipHandlerSmallBodyNoCompression(t *testing.T) {
 
 }
 
+func TestGzipHandlerRepeatedCompressionGzip(t *testing.T) {
+	t.Parallel()
+
+	handler := newTestHandler(testBody)
+	testBodyBr := brotliStrLevel(testBody, brotli.DefaultCompression)
+
+	for i := 0; i < 100; i++ {
+		req, _ := http.NewRequest("GET", "/whatever", nil)
+		req.Header.Set("Accept-Encoding", "br")
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		res := resp.Result()
+		assert.Equal(t, 200, res.StatusCode)
+		assert.Equal(t, "br", res.Header.Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+		assert.Equal(t, testBodyBr, resp.Body.Bytes())
+	}
+}
+
+func TestGzipHandlerRepeatedCompressionBrotli(t *testing.T) {
+	t.Parallel()
+
+	handler := newTestHandler(testBody)
+	testBodyGzip := gzipStrLevel(testBody, gzip.DefaultCompression)
+
+	for i := 0; i < 100; i++ {
+		req, _ := http.NewRequest("GET", "/whatever", nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		res := resp.Result()
+		assert.Equal(t, 200, res.StatusCode)
+		assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+		assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+		assert.Equal(t, testBodyGzip, resp.Body.Bytes())
+	}
+}
+
 func TestGzipHandlerAlreadyCompressed(t *testing.T) {
 	t.Parallel()
 
@@ -721,18 +759,22 @@ func TestContentTypes(t *testing.T) {
 
 // --------------------------------------------------------------------
 
-func BenchmarkGzipHandler_S2k(b *testing.B)         { benchmark(b, false, 2048, "gzip") }
-func BenchmarkGzipHandler_S20k(b *testing.B)        { benchmark(b, false, 20480, "gzip") }
-func BenchmarkGzipHandler_S100k(b *testing.B)       { benchmark(b, false, 102400, "gzip") }
-func BenchmarkGzipHandler_P2k(b *testing.B)         { benchmark(b, true, 2048, "gzip") }
-func BenchmarkGzipHandler_P20k(b *testing.B)        { benchmark(b, true, 20480, "gzip") }
-func BenchmarkGzipHandler_P100k(b *testing.B)       { benchmark(b, true, 102400, "gzip") }
-func BenchmarkGzipHandlerBrotli_S2k(b *testing.B)   { benchmark(b, false, 2048, "br") }
-func BenchmarkGzipHandlerBrotli_S20k(b *testing.B)  { benchmark(b, false, 20480, "br") }
-func BenchmarkGzipHandlerBrotli_S100k(b *testing.B) { benchmark(b, false, 102400, "br") }
-func BenchmarkGzipHandlerBrotli_P2k(b *testing.B)   { benchmark(b, true, 2048, "br") }
-func BenchmarkGzipHandlerBrotli_P20k(b *testing.B)  { benchmark(b, true, 20480, "br") }
-func BenchmarkGzipHandlerBrotli_P100k(b *testing.B) { benchmark(b, true, 102400, "br") }
+func BenchmarkAdapter(b *testing.B) {
+	for _, size := range []int{10, 100, 1000, 10000, 100000} {
+		b.Run(fmt.Sprintf("%d", size), func(b *testing.B) {
+			for _, ae := range []string{"gzip", "br"} {
+				b.Run(ae, func(b *testing.B) {
+					b.Run("serial", func(b *testing.B) {
+						benchmark(b, false, size, ae)
+					})
+					b.Run("parallel", func(b *testing.B) {
+						benchmark(b, true, size, ae)
+					})
+				})
+			}
+		})
+	}
+}
 
 // --------------------------------------------------------------------
 
@@ -764,23 +806,58 @@ func benchmark(b *testing.B, parallel bool, size int, ae string) {
 
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, req)
-	if res.Code != 200 || res.Header().Get("Content-Encoding") != ae || res.Body.Len() < size/10 {
-		b.Fatal(res)
+	if size < 20 {
+		if res.Code != 200 || res.Header().Get("Content-Encoding") != "" || res.Body.Len() != size {
+			b.Fatal(res)
+		}
+	} else {
+		if res.Code != 200 || res.Header().Get("Content-Encoding") != ae || res.Body.Len() < size/10 {
+			b.Fatal(res)
+		}
 	}
 
 	b.ResetTimer()
 	if parallel {
 		b.RunParallel(func(pb *testing.PB) {
-			var res httptest.ResponseRecorder
+			res := &discardResponseWriter{}
 			for pb.Next() {
-				handler.ServeHTTP(&res, req)
+				res.reset()
+				handler.ServeHTTP(res, req)
 			}
 		})
 	} else {
-		var res httptest.ResponseRecorder
+		res := &discardResponseWriter{}
 		for i := 0; i < b.N; i++ {
-			handler.ServeHTTP(&res, req)
+			res.reset()
+			handler.ServeHTTP(res, req)
 		}
+	}
+}
+
+type discardResponseWriter struct {
+	h http.Header
+}
+
+func (w *discardResponseWriter) Header() http.Header {
+	if w.h == nil {
+		w.h = http.Header{}
+	}
+	return w.h
+}
+
+func (*discardResponseWriter) Write(b []byte) (int, error) {
+	return len(b), nil
+}
+
+func (*discardResponseWriter) WriteHeader(int) {
+}
+
+func (w *discardResponseWriter) reset() {
+	if w.h == nil {
+		return
+	}
+	for k := range w.h {
+		delete(w.h, k)
 	}
 }
 
