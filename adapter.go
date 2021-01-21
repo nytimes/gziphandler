@@ -46,10 +46,6 @@ func Adapter(opts ...Option) (func(http.Handler) http.Handler, error) {
 		}
 	}
 
-	if err := c.validate(); err != nil {
-		return nil, err
-	}
-
 	bufPool := &sync.Pool{}
 	writerPool := &sync.Pool{}
 
@@ -131,20 +127,6 @@ type comp struct {
 	priority int
 }
 
-func (c *config) validate() error {
-	if c.minSize < 0 {
-		return fmt.Errorf("minimum size can not be negative: %d", c.minSize)
-	}
-
-	switch c.prefer {
-	case PreferServer, PreferClient:
-	default:
-		return fmt.Errorf("invalid prefer config: %v", c.prefer)
-	}
-
-	return nil
-}
-
 // Option can be passed to Handler to control its configuration.
 type Option func(c *config) error
 
@@ -152,6 +134,9 @@ type Option func(c *config) error
 // should be compressed. The default is DefaultMinSize.
 func MinSize(size int) Option {
 	return func(c *config) error {
+		if size < 0 {
+			return fmt.Errorf("minimum size can not be negative: %d", size)
+		}
 		c.minSize = size
 		return nil
 	}
