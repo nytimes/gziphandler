@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/CAFxX/httpcompression/contrib/klauspost/zstd"
 	"github.com/andybalholm/brotli"
 	"github.com/stretchr/testify/assert"
 )
@@ -762,7 +763,7 @@ func TestContentTypes(t *testing.T) {
 func BenchmarkAdapter(b *testing.B) {
 	for _, size := range []int{10, 100, 1000, 10000, 100000} {
 		b.Run(fmt.Sprintf("%d", size), func(b *testing.B) {
-			for _, ae := range []string{"gzip", "br"} {
+			for _, ae := range []string{"gzip", "br", "zstd"} {
 				b.Run(ae, func(b *testing.B) {
 					b.Run("serial", func(b *testing.B) {
 						benchmark(b, false, size, ae)
@@ -800,9 +801,14 @@ func benchmark(b *testing.B, parallel bool, size int, ae string) {
 		b.Fatal(err)
 	}
 
+	zenc, _ := zstd.New()
+
 	req, _ := http.NewRequest("GET", "/whatever", nil)
 	req.Header.Set("Accept-Encoding", ae)
-	handler := newTestHandler(string(bin[:size]))
+	handler := newTestHandler(
+		string(bin[:size]),
+		Compressor(zstd.Encoding, 2, zenc),
+	)
 
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, req)
