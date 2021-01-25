@@ -47,25 +47,25 @@ func preferredEncoding(accept codings, comps comps, common []string, prefer Pref
 		sort.Slice(common, func(i, j int) bool {
 			ci, cj := comps[common[i]].priority, comps[common[j]].priority
 			if ci != cj {
-				return ci > cj
+				return ci > cj // desc
 			}
 			ai, aj := accept[common[i]], accept[common[j]]
 			if ai != aj {
-				return ai > aj
+				return ai > aj // desc
 			}
-			return common[i] > common[j]
+			return common[i] < common[j] // asc
 		})
 	case PreferClient:
 		sort.Slice(common, func(i, j int) bool {
 			ai, aj := accept[common[i]], accept[common[j]]
 			if ai != aj {
-				return ai > aj
+				return ai > aj // desc
 			}
 			ci, cj := comps[common[i]].priority, comps[common[j]].priority
 			if ci != cj {
-				return ci > cj
+				return ci > cj // desc
 			}
-			return common[i] > common[j]
+			return common[i] < common[j] // asc
 		})
 	default:
 		panic("unknown prefer type")

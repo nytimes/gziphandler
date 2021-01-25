@@ -17,7 +17,6 @@ const (
 	contentType     = "Content-Type"
 	contentLength   = "Content-Length"
 	gzipEncoding    = "gzip"
-	brotliEncoding  = "br"
 )
 
 type codings map[string]float64
@@ -176,7 +175,7 @@ func GzipCompressor(g CompressorProvider) Option {
 
 // BrotliCompressor is an option to specify a custom compressor factory for Brotli.
 func BrotliCompressor(b CompressorProvider) Option {
-	return Compressor(brotliEncoding, 1, b)
+	return Compressor(brotli.Encoding, 1, b)
 }
 
 func errorOption(err error) Option {
