@@ -49,6 +49,14 @@ func Adapter(opts ...Option) (func(http.Handler) http.Handler, error) {
 		}
 	}
 
+	if len(c.compressor) == 0 {
+		// No compressors have been configured, so there is no useful work
+		// that this adapter can do.
+		return func(h http.Handler) http.Handler {
+			return h
+		}, nil
+	}
+
 	bufPool := &sync.Pool{}
 	writerPool := &sync.Pool{}
 

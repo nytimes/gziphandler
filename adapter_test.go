@@ -858,6 +858,27 @@ func TestContentTypes(t *testing.T) {
 	}
 }
 
+func TestBypass(t *testing.T) {
+	t.Parallel()
+	var h http.Handler = noopHandler{}
+	t.Run("bypass", func(t *testing.T) {
+		a, _ := Adapter()
+		if h != a(h) {
+			t.Fatal("no bypass")
+		}
+	})
+	t.Run("no bypass", func(t *testing.T) {
+		a, _ := Adapter(GzipCompressionLevel(1))
+		if h == a(h) {
+			t.Fatal("bypass")
+		}
+	})
+}
+
+type noopHandler struct{}
+
+func (noopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {}
+
 // --------------------------------------------------------------------
 
 func BenchmarkAdapter(b *testing.B) {
