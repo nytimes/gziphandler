@@ -108,6 +108,17 @@ func (w *compressWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
+func (w *compressWriter) WriteString(s string) (int, error) {
+	if ws, _ := w.w.(interface{ WriteString(string) (int, error) }); ws != nil {
+		// The responseWriter is already initialized and it implements WriteString.
+		return ws.WriteString(s)
+	}
+	// Fallback: the writer has not been initialized yet, or it has been initialized
+	// and it does not implement WriteString. We could in theory do something unsafe
+	// here but for now let's keep it simple.
+	return w.Write([]byte(s))
+}
+
 // startCompress initializes a compressing writer and writes the buffer.
 func (w *compressWriter) startCompress(enc string) error {
 	comp, ok := w.config.compressor[enc]
