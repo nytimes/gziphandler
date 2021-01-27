@@ -660,6 +660,30 @@ func TestFlushBeforeWrite(t *testing.T) {
 	assert.NotEqual(t, b, w.Body.Bytes())
 }
 
+func TestFlushAfterWrite(t *testing.T) {
+	t.Parallel()
+
+	b := []byte(testBody)
+	w := httptest.NewRecorder()
+
+	mw, _ := DefaultAdapter()
+	handler := mw(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusOK)
+		rw.Write(b)
+		before := w.Body.Len()
+		rw.(http.Flusher).Flush()
+		assert.NotEqual(t, before, w.Body.Len(), "not flushed")
+	}))
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("Accept-Encoding", "gzip")
+	handler.ServeHTTP(w, r)
+
+	res := w.Result()
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+	assert.NotEqual(t, b, w.Body.Bytes())
+}
+
 func TestImplementCloseNotifier(t *testing.T) {
 	t.Parallel()
 
