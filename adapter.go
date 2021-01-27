@@ -36,6 +36,8 @@ const (
 // which can be used to wrap an HTTP handler to transparently compress the response
 // body if the client supports it (via the Accept-Encoding header).
 // It is possible to pass one or more options to modify the middleware configuration.
+// If no options are provided, no compressors are enabled and therefore the adapter
+// is a no-op.
 // An error will be returned if invalid options are given.
 func Adapter(opts ...Option) (func(http.Handler) http.Handler, error) {
 	c := config{
@@ -109,6 +111,8 @@ func addVaryHeader(h http.Header, value string) {
 }
 
 // DefaultAdapter is like Adapter, but it includes sane defaults for general usage.
+// Currently the defaults enable gzip and brotli compression, and set a minimum body size
+// of 200 bytes.
 // The provided opts override the defaults.
 // The defaults are not guaranteed to remain constant over time: if you want to avoid this
 // use Adapter directly.
