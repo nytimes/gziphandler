@@ -666,10 +666,13 @@ func TestImplementCloseNotifier(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set(acceptEncoding, "gzip")
 	mw, _ := DefaultAdapter()
+	res := &mockRWCloseNotify{}
 	mw(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		_, ok := rw.(http.CloseNotifier)
+		cn, ok := rw.(http.CloseNotifier)
 		assert.True(t, ok, "response writer must implement http.CloseNotifier")
-	})).ServeHTTP(&mockRWCloseNotify{}, request)
+		cn.CloseNotify()
+	})).ServeHTTP(res, request)
+	assert.True(t, res.called, "CloseNotify not called")
 }
 
 func TestImplementFlusherAndCloseNotifier(t *testing.T) {
@@ -698,10 +701,11 @@ func TestNotImplementCloseNotifier(t *testing.T) {
 	})).ServeHTTP(httptest.NewRecorder(), request)
 }
 
-type mockRWCloseNotify struct{}
+type mockRWCloseNotify struct{ called bool }
 
 func (m *mockRWCloseNotify) CloseNotify() <-chan bool {
-	panic("implement me")
+	m.called = true
+	return nil
 }
 
 func (m *mockRWCloseNotify) Header() http.Header {
