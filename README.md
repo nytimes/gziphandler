@@ -66,6 +66,11 @@ func main() {
 }
 ```
 
+## Benchmark
+
+See the [benchmark results](results.md) to get an idea of the relative performance and
+compression efficiency of gzip, brotli and zstd in the current implementation.
+
 ## TODO
 
 - Add dictionary support to gzip and brotli (zstd already supports it)
