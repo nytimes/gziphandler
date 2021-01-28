@@ -3,8 +3,9 @@ Golang server middleware for HTTP compression
 
 [![Build status](https://github.com/CAFxX/httpcompression/workflows/Build/badge.svg)](https://github.com/CAFxX/httpcompression/actions)
 [![codecov](https://codecov.io/gh/CAFxX/httpcompression/branch/master/graph/badge.svg)](https://codecov.io/gh/CAFxX/httpcompression)
-[![Go Report](https://goreportcard.com/badge/github.com/CAFxX/httpcompression)](https://goreportcard.com/report/github.com/CAFxX/httpcompression) 
-[![Go Reference](https://pkg.go.dev/badge/github.com/CAFxX/httpcompression.svg)](https://pkg.go.dev/github.com/CAFxX/httpcompression) :warning: API is not stable yet.
+[![Go Report](https://goreportcard.com/badge/github.com/CAFxX/httpcompression)](https://goreportcard.com/report/github.com/CAFxX/httpcompression)
+[![CodeFactor](https://www.codefactor.io/repository/github/cafxx/httpcompression/badge)](https://www.codefactor.io/repository/github/cafxx/httpcompression)
+[![Go Reference](https://pkg.go.dev/badge/github.com/CAFxX/httpcompression.svg)](https://pkg.go.dev/github.com/CAFxX/httpcompression) 
 
 This is a small Go package which wraps HTTP handlers to transparently compress
 response bodies using zstd, brotli or gzip - for clients which support them. Although 
@@ -15,6 +16,8 @@ users to extend it by plugging in third-party or custom compression encoders.
 **Note: This package was recently forked from NYTimes/gziphandler.
 Maintaining drop-in compatibility is not a goal of this fork, as the scope of this fork
 is significantly wider than the original package.**
+
+:warning: As we have not reached 1.0 yet, API is still subject to changes.
 
 ## Features
 
