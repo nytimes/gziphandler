@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	Encoding     = "br"
-	DefaultLevel = brotli.DefaultCompression
+	Encoding           = "br"
+	DefaultCompression = brotli.DefaultCompression
 )
 
 type Options = brotli.WriterOptions

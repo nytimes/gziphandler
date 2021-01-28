@@ -13,9 +13,12 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/CAFxX/httpcompression/contrib/andybalholm/brotli"
 	"github.com/CAFxX/httpcompression/contrib/klauspost/zstd"
-	"github.com/andybalholm/brotli"
 	"github.com/stretchr/testify/assert"
+
+	ibrotli "github.com/andybalholm/brotli"
+	kpzstd "github.com/klauspost/compress/zstd"
 )
 
 const (
@@ -908,15 +911,20 @@ func (noopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {}
 func BenchmarkAdapter(b *testing.B) {
 	for _, size := range []int{10, 100, 1000, 10000, 100000} {
 		b.Run(fmt.Sprintf("%d", size), func(b *testing.B) {
-			for _, ae := range []string{"gzip", "br", "zstd"} {
-				b.Run(ae, func(b *testing.B) {
-					b.Run("serial", func(b *testing.B) {
-						benchmark(b, false, size, ae)
+			for ae, maxq := range map[string]int{"gzip": 9, "br": 11, "zstd": 4} {
+				if size < DefaultMinSize {
+					maxq = 1
+				}
+				for q := 1; q <= maxq; q++ {
+					b.Run(fmt.Sprintf("%s/%d", ae, q), func(b *testing.B) {
+						b.Run("serial", func(b *testing.B) {
+							benchmark(b, false, size, ae, q)
+						})
+						b.Run("parallel", func(b *testing.B) {
+							benchmark(b, true, size, ae, q)
+						})
 					})
-					b.Run("parallel", func(b *testing.B) {
-						benchmark(b, true, size, ae)
-					})
-				})
+				}
 			}
 		})
 	}
@@ -934,36 +942,47 @@ func gzipStrLevel(s string, lvl int) []byte {
 
 func brotliStrLevel(s string, lvl int) []byte {
 	var b bytes.Buffer
-	w := brotli.NewWriterLevel(&b, lvl)
+	w := ibrotli.NewWriterLevel(&b, lvl)
 	io.WriteString(w, s)
 	w.Close()
 	return b.Bytes()
 }
 
-func benchmark(b *testing.B, parallel bool, size int, ae string) {
+func benchmark(b *testing.B, parallel bool, size int, ae string, d int) {
 	bin, err := ioutil.ReadFile("testdata/benchmark.json")
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	zenc, _ := zstd.New()
+	var enc CompressorProvider
+	switch ae {
+	case "gzip":
+		enc, err = NewDefaultGzipCompressor(d)
+	case "br":
+		enc, err = brotli.New(brotli.Options{Quality: d})
+	case "zstd":
+		enc, err = zstd.New(kpzstd.WithEncoderLevel(kpzstd.EncoderLevel(d)))
+	}
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	req, _ := http.NewRequest("GET", "/whatever", nil)
 	req.Header.Set("Accept-Encoding", ae)
 	handler := newTestHandler(
 		string(bin[:size]),
-		Compressor(zstd.Encoding, 2, zenc),
+		Compressor(ae, 100, enc),
 	)
 
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, req)
-	if size < 20 {
+	if size < DefaultMinSize {
 		if res.Code != 200 || res.Header().Get("Content-Encoding") != "" || res.Body.Len() != size {
-			b.Fatal(res)
+			b.Fatalf("code=%d, accept-encoding=%q, body=%d", res.Code, res.Header().Get("Content-Encoding"), res.Body.Len())
 		}
 	} else {
-		if res.Code != 200 || res.Header().Get("Content-Encoding") != ae || res.Body.Len() < size/10 {
-			b.Fatal(res)
+		if res.Code != 200 || res.Header().Get("Content-Encoding") != ae || res.Body.Len() < size/10 || res.Body.Len() == size {
+			b.Fatalf("code=%d, accept-encoding=%q, body=%d", res.Code, res.Header().Get("Content-Encoding"), res.Body.Len())
 		}
 	}
 
@@ -974,6 +993,7 @@ func benchmark(b *testing.B, parallel bool, size int, ae string) {
 			for pb.Next() {
 				res.reset()
 				handler.ServeHTTP(res, req)
+				b.ReportMetric(float64(res.b*100)/float64(size), "%")
 			}
 		})
 	} else {
@@ -981,12 +1001,14 @@ func benchmark(b *testing.B, parallel bool, size int, ae string) {
 		for i := 0; i < b.N; i++ {
 			res.reset()
 			handler.ServeHTTP(res, req)
+			b.ReportMetric(float64(res.b*100)/float64(size), "%")
 		}
 	}
 }
 
 type discardResponseWriter struct {
 	h http.Header
+	b int
 }
 
 func (w *discardResponseWriter) Header() http.Header {
@@ -996,7 +1018,8 @@ func (w *discardResponseWriter) Header() http.Header {
 	return w.h
 }
 
-func (*discardResponseWriter) Write(b []byte) (int, error) {
+func (w *discardResponseWriter) Write(b []byte) (int, error) {
+	w.b += len(b)
 	return len(b), nil
 }
 
@@ -1004,9 +1027,7 @@ func (*discardResponseWriter) WriteHeader(int) {
 }
 
 func (w *discardResponseWriter) reset() {
-	if w.h == nil {
-		return
-	}
+	w.b = 0
 	for k := range w.h {
 		delete(w.h, k)
 	}

@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	Encoding     = "gzip"
-	DefaultLevel = gzip.DefaultCompression
+	Encoding           = "gzip"
+	DefaultCompression = gzip.DefaultCompression
 )
 
 type compressor struct {

@@ -7,7 +7,10 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-const Encoding = "zstd"
+const (
+	Encoding           = "zstd"
+	DefaultCompression = zstd.SpeedDefault
+)
 
 type compressor struct {
 	pool sync.Pool
