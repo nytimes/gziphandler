@@ -906,6 +906,77 @@ type noopHandler struct{}
 
 func (noopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {}
 
+func TestWriteStringNoCompressionStatic(t *testing.T) {
+	t.Parallel()
+	var h http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if w, ok := w.(interface{ WriteString(string) (int, error) }); ok {
+			w.WriteString("hello string world!")
+			return
+		}
+		w.Write([]byte("hello bytes world!"))
+	})
+	a, _ := DefaultAdapter()
+	h = a(h)
+	// Do not send accept-encoding to disable compression
+	r, _ := http.NewRequest("GET", "/", nil)
+	t.Run("WriteString", func(t *testing.T) {
+		w := &discardResponseWriterWithWriteString{}
+		h.ServeHTTP(w, r)
+		if w.s != 19 {
+			t.Fatalf("WriteString not called: %+v", w)
+		}
+	})
+	t.Run("Write", func(t *testing.T) {
+		w := &discardResponseWriter{}
+		h.ServeHTTP(w, r)
+		if w.b != 18 {
+			t.Fatalf("Write not called: %+v", w)
+		}
+	})
+}
+
+func TestWriteStringNoCompressionDynamic(t *testing.T) {
+	t.Parallel()
+	var h http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/uncompressible")
+		if w, ok := w.(interface{ WriteString(string) (int, error) }); ok {
+			w.WriteString(testBody) // first WriteString will fallback to Write
+			w.WriteString(testBody)
+			return
+		}
+		w.Write([]byte(testBody))
+		w.Write([]byte(testBody))
+	})
+	a, _ := DefaultAdapter(ContentTypes([]string{"text/uncompressible"}, true))
+	h = a(h)
+	r, _ := http.NewRequest("GET", "/", nil)
+	r.Header.Set("Accept-Encoding", "gzip")
+	t.Run("WriteString", func(t *testing.T) {
+		w := &discardResponseWriterWithWriteString{}
+		h.ServeHTTP(w, r)
+		if w.s != len(testBody) || w.b != len(testBody) { // first WriteString falls back to Write
+			t.Fatalf("WriteString not called: %+v", w)
+		}
+	})
+	t.Run("Write", func(t *testing.T) {
+		w := &discardResponseWriter{}
+		h.ServeHTTP(w, r)
+		if w.b != len(testBody)*2 {
+			t.Fatalf("Write not called: %+v", w)
+		}
+	})
+}
+
+type discardResponseWriterWithWriteString struct {
+	discardResponseWriter
+	s int
+}
+
+func (w *discardResponseWriterWithWriteString) WriteString(s string) (n int, err error) {
+	w.s += len(s)
+	return len(s), nil
+}
+
 // --------------------------------------------------------------------
 
 func BenchmarkAdapter(b *testing.B) {

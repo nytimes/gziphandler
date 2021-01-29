@@ -32,6 +32,7 @@ var (
 	_ io.WriteCloser = &compressWriter{}
 	_ http.Flusher   = &compressWriter{}
 	_ http.Hijacker  = &compressWriter{}
+	_ writeStringer  = &compressWriter{}
 )
 
 type compressWriterWithCloseNotify struct {
@@ -46,11 +47,12 @@ var (
 	_ io.WriteCloser = compressWriterWithCloseNotify{}
 	_ http.Flusher   = compressWriterWithCloseNotify{}
 	_ http.Hijacker  = compressWriterWithCloseNotify{}
+	_ writeStringer  = compressWriterWithCloseNotify{}
 )
 
 const maxBuf = 1 << 16 // maximum size of recycled buffer
 
-// Write appends data to the gzip writer.
+// WriteString compresses and appends the given byte slice to the underlying ResponseWriter.
 func (w *compressWriter) Write(b []byte) (int, error) {
 	if w.w != nil {
 		// The responseWriter is already initialized: use it.
@@ -108,15 +110,26 @@ func (w *compressWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
+// WriteString compresses and appends the given string to the underlying ResponseWriter.
+//
+// This makes use of an optional method (WriteString) exposed by the compressors, or by
+// the underlying ResponseWriter.
 func (w *compressWriter) WriteString(s string) (int, error) {
-	if ws, _ := w.w.(interface{ WriteString(string) (int, error) }); ws != nil {
+	// Since WriteString is an optional interface of the compressor, and the actual compressor
+	// is chosen only after the first call to Write, we can't statically know whether the interface
+	// is supported. We therefore have to check dynamically.
+	if ws, _ := w.w.(writeStringer); ws != nil {
 		// The responseWriter is already initialized and it implements WriteString.
 		return ws.WriteString(s)
 	}
 	// Fallback: the writer has not been initialized yet, or it has been initialized
 	// and it does not implement WriteString. We could in theory do something unsafe
-	// here but for now let's keep it simple.
+	// here but for now let's keep it simple and fallback to Write.
 	return w.Write([]byte(s))
+}
+
+type writeStringer interface {
+	WriteString(string) (int, error)
 }
 
 // startCompress initializes a compressing writer and writes the buffer.
