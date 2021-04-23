@@ -41,14 +41,15 @@ func addLevelPool(level int) {
 	}
 }
 
-type PooledWriter struct {
+type pooledWriter struct {
 	*gzip.Writer
 	index int
 }
 
-func (pw *PooledWriter) Close() error {
+func (pw *pooledWriter) Close() error {
 	err := pw.Writer.Close()
 	gzipWriterPools[pw.index].Put(pw.Writer)
+	pw.Writer = nil
 	return err
 }
 
@@ -56,7 +57,7 @@ func NewWriter(w io.Writer, level int) writer.GzipWriter {
 	index := poolIndex(level)
 	gzw := gzipWriterPools[index].Get().(*gzip.Writer)
 	gzw.Reset(w)
-	return &PooledWriter{
+	return &pooledWriter{
 		Writer: gzw,
 		index:  index,
 	}
