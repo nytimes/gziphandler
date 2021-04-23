@@ -4,13 +4,14 @@ import (
 	"bufio"
 	"compress/gzip"
 	"fmt"
+	"github.com/NYTimes/gziphandler/writer"
+	"github.com/NYTimes/gziphandler/writer/stdlib"
 	"io"
 	"mime"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 const (
@@ -36,48 +37,15 @@ const (
 	DefaultMinSize = 1400
 )
 
-// gzipWriterPools stores a sync.Pool for each compression level for reuse of
-// gzip.Writers. Use poolIndex to covert a compression level to an index into
-// gzipWriterPools.
-var gzipWriterPools [gzip.BestCompression - gzip.BestSpeed + 2]*sync.Pool
-
-func init() {
-	for i := gzip.BestSpeed; i <= gzip.BestCompression; i++ {
-		addLevelPool(i)
-	}
-	addLevelPool(gzip.DefaultCompression)
-}
-
-// poolIndex maps a compression level to its index into gzipWriterPools. It
-// assumes that level is a valid gzip compression level.
-func poolIndex(level int) int {
-	// gzip.DefaultCompression == -1, so we need to treat it special.
-	if level == gzip.DefaultCompression {
-		return gzip.BestCompression - gzip.BestSpeed + 1
-	}
-	return level - gzip.BestSpeed
-}
-
-func addLevelPool(level int) {
-	gzipWriterPools[poolIndex(level)] = &sync.Pool{
-		New: func() interface{} {
-			// NewWriterLevel only returns error on a bad level, we are guaranteeing
-			// that this will be a valid level so it is okay to ignore the returned
-			// error.
-			w, _ := gzip.NewWriterLevel(nil, level)
-			return w
-		},
-	}
-}
-
 // GzipResponseWriter provides an http.ResponseWriter interface, which gzips
 // bytes before writing them to the underlying response. This doesn't close the
 // writers, so don't forget to do that.
 // It can be configured to skip response smaller than minSize.
 type GzipResponseWriter struct {
 	http.ResponseWriter
-	index int // Index for gzipWriterPools.
-	gw    *gzip.Writer
+	level     int
+	gwFactory writer.GzipWriterFactory
+	gw        writer.GzipWriter
 
 	code int // Saves the WriteHeader value.
 
@@ -217,9 +185,7 @@ func (w *GzipResponseWriter) WriteHeader(code int) {
 func (w *GzipResponseWriter) init() {
 	// Bytes written during ServeHTTP are redirected to this gzip writer
 	// before being written to the underlying response.
-	gzw := gzipWriterPools[w.index].Get().(*gzip.Writer)
-	gzw.Reset(w.ResponseWriter)
-	w.gw = gzw
+	w.gw = w.gwFactory(w.ResponseWriter, w.level)
 }
 
 // Close will close the gzip.Writer and will put it back in the gzipWriterPool.
@@ -239,7 +205,6 @@ func (w *GzipResponseWriter) Close() error {
 	}
 
 	err := w.gw.Close()
-	gzipWriterPools[w.index].Put(w.gw)
 	w.gw = nil
 	return err
 }
@@ -305,8 +270,9 @@ func NewGzipLevelAndMinSize(level, minSize int) (func(http.Handler) http.Handler
 
 func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error) {
 	c := &config{
-		level:   gzip.DefaultCompression,
-		minSize: DefaultMinSize,
+		level:     gzip.DefaultCompression,
+		minSize:   DefaultMinSize,
+		newWriter: stdlib.NewWriter,
 	}
 
 	for _, o := range opts {
@@ -318,14 +284,13 @@ func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error
 	}
 
 	return func(h http.Handler) http.Handler {
-		index := poolIndex(c.level)
-
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(vary, acceptEncoding)
 			if acceptsGzip(r) {
 				gw := &GzipResponseWriter{
 					ResponseWriter: w,
-					index:          index,
+					gwFactory: c.newWriter,
+					level:          c.level,
 					minSize:        c.minSize,
 					contentTypes:   c.contentTypes,
 				}
@@ -378,6 +343,7 @@ func (pct parsedContentType) equals(mediaType string, params map[string]string) 
 type config struct {
 	minSize      int
 	level        int
+	newWriter    writer.GzipWriterFactory
 	contentTypes []parsedContentType
 }
 
@@ -404,6 +370,16 @@ func MinSize(size int) option {
 func CompressionLevel(level int) option {
 	return func(c *config) {
 		c.level = level
+	}
+}
+
+// Implementation changes the implementation of GzipWriter
+//
+// The default implementation is writer/stdlib/NewWriter
+// which is backed by standard library's compress/zlib
+func Implementation(writer writer.GzipWriterFactory) option {
+	return func(c *config) {
+		c.newWriter = writer
 	}
 }
 
