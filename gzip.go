@@ -270,9 +270,9 @@ func NewGzipLevelAndMinSize(level, minSize int) (func(http.Handler) http.Handler
 
 func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error) {
 	c := &config{
-		level:   gzip.DefaultCompression,
-		minSize: DefaultMinSize,
-		writer:  stdlib.NewWriter,
+		level:     gzip.DefaultCompression,
+		minSize:   DefaultMinSize,
+		newWriter: stdlib.NewWriter,
 	}
 
 	for _, o := range opts {
@@ -289,7 +289,7 @@ func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error
 			if acceptsGzip(r) {
 				gw := &GzipResponseWriter{
 					ResponseWriter: w,
-					gwFactory: c.writer,
+					gwFactory: c.newWriter,
 					level:          c.level,
 					minSize:        c.minSize,
 					contentTypes:   c.contentTypes,
@@ -343,7 +343,7 @@ func (pct parsedContentType) equals(mediaType string, params map[string]string) 
 type config struct {
 	minSize      int
 	level        int
-	writer       writer.GzipWriterFactory
+	newWriter    writer.GzipWriterFactory
 	contentTypes []parsedContentType
 }
 
@@ -373,9 +373,13 @@ func CompressionLevel(level int) option {
 	}
 }
 
+// Implementation changes the implementation of GzipWriter
+//
+// The default implementation is writer/stdlib/NewWriter
+// which is backed by standard library's compress/zlib
 func Implementation(writer writer.GzipWriterFactory) option {
 	return func(c *config) {
-		c.writer = writer
+		c.newWriter = writer
 	}
 }
 
