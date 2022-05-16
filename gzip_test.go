@@ -30,6 +30,7 @@ func TestParseEncodings(t *testing.T) {
 		"*":                                  {"*": 1.0},
 		"compress;q=0.5, gzip;q=1.0":         {"compress": 0.5, "gzip": 1.0},
 		"gzip;q=1.0, identity; q=0.5, *;q=0": {"gzip": 1.0, "identity": 0.5, "*": 0.0},
+		"gzip;q=1.0, identity;q=0":           {"gzip": 1.0, "identity": 0.0},
 
 		// More random stuff
 		"AAA;q=1":     {"aaa": 1.0},
@@ -39,6 +40,33 @@ func TestParseEncodings(t *testing.T) {
 	for eg, exp := range examples {
 		act, _ := parseEncodings(eg)
 		assert.Equal(t, exp, act)
+	}
+}
+
+func TestRequestAcceptance(t *testing.T) {
+	type ret struct {
+		acceptsGzip     bool
+		acceptsIdentity bool
+	}
+
+	for header, expected := range map[string]ret{
+		"gzip":                            {true, true},
+		"gzip;q=1":                        {true, true},
+		"gzip;q=1, identity;q=0":          {true, false},
+		"gzip;q=1, identity;q=0, *;q=0.5": {true, false},
+		"foo;q=1, gzip;q=0.5, *;q=0":      {true, false},
+		"identity;q=0":                    {false, false},
+		"identity;q=0, *;q=0.5":           {true, false},
+	} {
+		t.Run(header, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, "http://localhost", nil)
+			req.Header.Set(acceptEncoding, header)
+			assert.NoError(t, err)
+
+			acceptsGzip, acceptsIdentity := requestAcceptance(req)
+			assert.Equal(t, expected.acceptsGzip, acceptsGzip, "acceptsGzip differs")
+			assert.Equal(t, expected.acceptsIdentity, acceptsIdentity, "acceptsIdentity differs")
+		})
 	}
 }
 
@@ -96,7 +124,21 @@ func TestGzipHandlerSmallBodyNoCompression(t *testing.T) {
 	assert.Equal(t, "", res.Header.Get("Content-Encoding"))
 	assert.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
 	assert.Equal(t, smallTestBody, resp.Body.String())
+}
 
+func TestGzipHandlerSmallButDoesNotAcceptIdentity(t *testing.T) {
+	handler := newTestHandler(smallTestBody)
+
+	req, _ := http.NewRequest("GET", "/whatever", nil)
+	req.Header.Set("Accept-Encoding", "gzip;q=1, identity;q=0")
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	res := resp.Result()
+
+	// We explicitly stated that we will reject an uncompressed response.
+
+	assert.Equal(t, 200, res.StatusCode)
+	assert.Equal(t, "gzip", res.Header.Get(contentEncoding))
 }
 
 func TestGzipHandlerAlreadyCompressed(t *testing.T) {
