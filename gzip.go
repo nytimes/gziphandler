@@ -3,8 +3,10 @@ package gziphandler // import "github.com/NYTimes/gziphandler"
 import (
 	"bufio"
 	"compress/gzip"
+	"crypto/rand"
 	"fmt"
 	"io"
+	"math/big"
 	"mime"
 	"net"
 	"net/http"
@@ -40,6 +42,9 @@ const (
 // gzip.Writers. Use poolIndex to covert a compression level to an index into
 // gzipWriterPools.
 var gzipWriterPools [gzip.BestCompression - gzip.BestSpeed + 2]*sync.Pool
+
+// ascii is used to create pseudo random file names for HTB.
+var ascii = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 func init() {
 	for i := gzip.BestSpeed; i <= gzip.BestCompression; i++ {
@@ -81,9 +86,10 @@ type GzipResponseWriter struct {
 
 	code int // Saves the WriteHeader value.
 
-	minSize int    // Specifies the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
-	buf     []byte // Holds the first part of the write before reaching the minSize or the end of the write.
-	ignore  bool   // If true, then we immediately passthru writes to the underlying ResponseWriter.
+	minSize     int                    // Specifies the minimum response size to gzip. If the response length is bigger than this value, it is compressed.
+	htbFileName func() (string, error) // Holds a function that returns a random string for HTB. Setting a function enables dependency injection.
+	buf         []byte                 // Holds the first part of the write before reaching the minSize or the end of the write.
+	ignore      bool                   // If true, then we immediately passthru writes to the underlying ResponseWriter.
 
 	contentTypes []parsedContentType // Only compress if the response is one of these content-types. All are accepted if empty.
 }
@@ -169,6 +175,16 @@ func (w *GzipResponseWriter) startGzip() error {
 	if len(w.buf) > 0 {
 		// Initialize the GZIP response.
 		w.init()
+
+		// Handle HTB. Modifying the header needs to happen before the first call to write.
+		if w.htbFileName != nil {
+			htbName, err := w.htbFileName()
+			if err != nil {
+				return fmt.Errorf("gziphandler: generating HTB file name: %w", err)
+			}
+			w.gw.Header.Name = htbName
+		}
+
 		n, err := w.gw.Write(w.buf)
 
 		// This should never happen (per io.Writer docs), but if the write didn't
@@ -180,6 +196,25 @@ func (w *GzipResponseWriter) startGzip() error {
 		return err
 	}
 	return nil
+}
+
+func htbFileName(maxSize int) (string, error) {
+	// Get a random size
+	size, err := rand.Int(rand.Reader, big.NewInt(int64(maxSize)))
+	if err != nil {
+		return "", err
+	}
+
+	// Create the string
+	b := make([]rune, size.Int64())
+	for i := range b {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(ascii))))
+		if err != nil {
+			return "", err
+		}
+		b[i] = ascii[n.Int64()]
+	}
+	return string(b), nil
 }
 
 // startPlain writes to sent bytes and buffer the underlying ResponseWriter without gzip.
@@ -277,6 +312,11 @@ func (w *GzipResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 // verify Hijacker interface implementation
 var _ http.Hijacker = &GzipResponseWriter{}
 
+// Implement the unwrap function to allow using NewResponseController
+func (w *GzipResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 // MustNewGzipLevelHandler behaves just like NewGzipLevelHandler except that in
 // an error case it panics rather than returning an error.
 func MustNewGzipLevelHandler(level int) func(http.Handler) http.Handler {
@@ -329,6 +369,11 @@ func GzipHandlerWithOpts(opts ...option) (func(http.Handler) http.Handler, error
 					minSize:        c.minSize,
 					contentTypes:   c.contentTypes,
 				}
+				if c.htbSize > 0 {
+					gw.htbFileName = func() (string, error) {
+						return htbFileName(c.htbSize)
+					}
+				}
 				defer gw.Close()
 
 				if _, ok := w.(http.CloseNotifier); ok {
@@ -378,6 +423,7 @@ func (pct parsedContentType) equals(mediaType string, params map[string]string) 
 type config struct {
 	minSize      int
 	level        int
+	htbSize      int
 	contentTypes []parsedContentType
 }
 
@@ -404,6 +450,14 @@ func MinSize(size int) option {
 func CompressionLevel(level int) option {
 	return func(c *config) {
 		c.level = level
+	}
+}
+
+// HTBSize lets you specify the maximum size for Heal The Breach.
+// See https://ieeexplore.ieee.org/document/9754554
+func HTBSize(size int) option {
+	return func(c *config) {
+		c.htbSize = size
 	}
 }
 

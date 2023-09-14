@@ -79,6 +79,28 @@ func TestGzipHandler(t *testing.T) {
 	handler.ServeHTTP(res3, req3)
 
 	assert.Equal(t, http.DetectContentType([]byte(testBody)), res3.Header().Get("Content-Type"))
+
+	// Test with an HTB function
+
+	req4, _ := http.NewRequest("GET", "/whatever", nil)
+	req4.Header.Set("Accept-Encoding", "gzip")
+	resp4 := httptest.NewRecorder()
+
+	htbFileName := "12345"
+	wrapper, _ := handlerWithCustomHTB(func() (string, error) {
+		return htbFileName, nil
+	})
+	htbHandler := wrapper(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, testBody)
+
+	}))
+	htbHandler.ServeHTTP(resp4, req4)
+	res4 := resp4.Result()
+
+	assert.Equal(t, 200, res4.StatusCode)
+	assert.Equal(t, "gzip", res4.Header.Get("Content-Encoding"))
+	assert.Equal(t, "Accept-Encoding", res4.Header.Get("Vary"))
+	assert.Equal(t, gzipStrLevelWithFileName(testBody, htbFileName, gzip.DefaultCompression), resp4.Body.Bytes())
 }
 
 func TestGzipHandlerSmallBodyNoCompression(t *testing.T) {
@@ -625,6 +647,15 @@ func gzipStrLevel(s string, lvl int) []byte {
 	return b.Bytes()
 }
 
+func gzipStrLevelWithFileName(s, n string, lvl int) []byte {
+	var b bytes.Buffer
+	w, _ := gzip.NewWriterLevel(&b, lvl)
+	w.Header.Name = n
+	io.WriteString(w, s)
+	w.Close()
+	return b.Bytes()
+}
+
 func benchmark(b *testing.B, parallel bool, size int) {
 	bin, err := ioutil.ReadFile("testdata/benchmark.json")
 	if err != nil {
@@ -670,4 +701,38 @@ func newTestHandler(body string) http.Handler {
 			io.WriteString(w, body)
 		}
 	}))
+}
+
+func handlerWithCustomHTB(htb func() (string, error)) (func(http.Handler) http.Handler, error) {
+	c := &config{
+		level:   gzip.DefaultCompression,
+		minSize: DefaultMinSize,
+	}
+	return func(h http.Handler) http.Handler {
+		index := poolIndex(c.level)
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Add(vary, acceptEncoding)
+			if acceptsGzip(r) {
+				gw := &GzipResponseWriter{
+					ResponseWriter: w,
+					index:          index,
+					minSize:        c.minSize,
+					contentTypes:   c.contentTypes,
+					htbFileName:    htb,
+				}
+				defer gw.Close()
+
+				if _, ok := w.(http.CloseNotifier); ok {
+					gwcn := GzipResponseWriterWithCloseNotify{gw}
+					h.ServeHTTP(gwcn, r)
+				} else {
+					h.ServeHTTP(gw, r)
+				}
+
+			} else {
+				h.ServeHTTP(w, r)
+			}
+		})
+	}, nil
 }
