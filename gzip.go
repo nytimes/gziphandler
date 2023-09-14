@@ -312,6 +312,11 @@ func (w *GzipResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 // verify Hijacker interface implementation
 var _ http.Hijacker = &GzipResponseWriter{}
 
+// Implement the unwrap function to allow using NewResponseController
+func (w *GzipResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 // MustNewGzipLevelHandler behaves just like NewGzipLevelHandler except that in
 // an error case it panics rather than returning an error.
 func MustNewGzipLevelHandler(level int) func(http.Handler) http.Handler {
